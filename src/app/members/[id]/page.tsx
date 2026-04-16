@@ -21,6 +21,7 @@ import Link from "next/link";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { explainCreditScore, AiCreditScoreExplanationOutput } from "@/ai/flows/ai-credit-score-explanation";
 import { Skeleton } from "@/components/ui/skeleton";
+import { cn } from "@/lib/utils";
 
 export default function MemberDetails() {
   const { id } = useParams();
@@ -206,8 +207,4 @@ export default function MemberDetails() {
       </main>
     </div>
   );
-}
-
-function cn(...classes: (string | boolean | undefined)[]) {
-  return classes.filter(Boolean).join(' ');
 }

@@ -9,6 +9,7 @@ import { Badge } from "@/components/ui/badge";
 import { Plus, Download, Filter, Search } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import Link from "next/link";
+import { cn } from "@/lib/utils";
 
 export default function TransactionsPage() {
   return (
@@ -99,8 +100,4 @@ export default function TransactionsPage() {
       </main>
     </div>
   );
-}
-
-function cn(...classes: (string | boolean | undefined)[]) {
-  return classes.filter(Boolean).join(' ');
 }

@@ -15,6 +15,7 @@ import { MOCK_TRANSACTIONS } from "@/lib/mock-data";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import Link from "next/link";
+import { cn } from "@/lib/utils";
 
 export default function Dashboard() {
   const totalFunds = 125000;
@@ -148,8 +149,4 @@ export default function Dashboard() {
       </main>
     </div>
   );
-}
-
-function cn(...classes: (string | boolean | undefined)[]) {
-  return classes.filter(Boolean).join(' ');
 }
