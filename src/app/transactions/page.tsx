@@ -8,6 +8,7 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Plus, Download, Filter, Search } from "lucide-react";
 import { Input } from "@/components/ui/input";
+import Link from "next/link";
 
 export default function TransactionsPage() {
   return (
@@ -25,9 +26,11 @@ export default function TransactionsPage() {
               <Download className="h-4 w-4 mr-2" />
               Report
             </Button>
-            <Button>
-              <Plus className="h-4 w-4 mr-2" />
-              New Entry
+            <Button asChild>
+              <Link href="/transactions/new">
+                <Plus className="h-4 w-4 mr-2" />
+                New Entry
+              </Link>
             </Button>
           </div>
         </header>

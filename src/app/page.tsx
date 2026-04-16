@@ -11,9 +11,8 @@ import {
   History,
   Coins
 } from "lucide-react";
-import { MOCK_TRANSACTIONS, MOCK_MEMBERS } from "@/lib/mock-data";
+import { MOCK_TRANSACTIONS } from "@/lib/mock-data";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import Link from "next/link";
 
@@ -118,11 +117,11 @@ export default function Dashboard() {
                 <Button className="w-full bg-accent text-accent-foreground hover:bg-accent/90" asChild>
                   <Link href="/members/new">Add New Member</Link>
                 </Button>
-                <Button variant="outline" className="w-full bg-white/10 border-white/20 text-white hover:bg-white/20">
-                  Record Monthly Deposit
+                <Button variant="outline" className="w-full bg-white/10 border-white/20 text-white hover:bg-white/20" asChild>
+                  <Link href="/deposits/new">Record Monthly Deposit</Link>
                 </Button>
-                <Button variant="outline" className="w-full bg-white/10 border-white/20 text-white hover:bg-white/20">
-                  Issue New Loan
+                <Button variant="outline" className="w-full bg-white/10 border-white/20 text-white hover:bg-white/20" asChild>
+                  <Link href="/loans/new">Issue New Loan</Link>
                 </Button>
               </CardContent>
             </Card>
