@@ -1,0 +1,438 @@
+{
+  "entities": {
+    "Member": {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "title": "Member",
+      "type": "object",
+      "description": "Represents a single member of the finance group, including their personal details and financial standing.",
+      "properties": {
+        "id": {
+          "type": "string",
+          "description": "Unique identifier for the Member entity."
+        },
+        "name": {
+          "type": "string",
+          "description": "Full name of the member."
+        },
+        "mobileNumber": {
+          "type": "string",
+          "description": "Mobile contact number of the member."
+        },
+        "status": {
+          "type": "string",
+          "description": "Current status of the member (e.g., 'Active', 'Inactive')."
+        },
+        "creditRating": {
+          "type": "number",
+          "description": "Credit rating of the member on a scale of 1-10, influencing loan eligibility."
+        },
+        "createdAt": {
+          "type": "string",
+          "description": "Timestamp when the member profile was created.",
+          "format": "date-time"
+        },
+        "updatedAt": {
+          "type": "string",
+          "description": "Timestamp when the member profile was last updated.",
+          "format": "date-time"
+        }
+      },
+      "required": [
+        "id",
+        "name",
+        "mobileNumber",
+        "status",
+        "createdAt",
+        "updatedAt"
+      ]
+    },
+    "Loan": {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "title": "Loan",
+      "type": "object",
+      "description": "Details of a specific loan issued to a member or an outsider.",
+      "properties": {
+        "id": {
+          "type": "string",
+          "description": "Unique identifier for the Loan entity."
+        },
+        "memberId": {
+          "type": "string",
+          "description": "Reference to the Member who took the loan. (Relationship: Member 1:N Loan). Null if 'isOutsiderLoan' is true."
+        },
+        "loanAmount": {
+          "type": "number",
+          "description": "The initial principal amount disbursed for the loan."
+        },
+        "interestRate": {
+          "type": "number",
+          "description": "The custom annual interest rate (e.g., 0.08 for 8%) applied to this specific loan."
+        },
+        "loanDate": {
+          "type": "string",
+          "description": "The date and time when the loan was issued.",
+          "format": "date-time"
+        },
+        "outstandingPrincipal": {
+          "type": "number",
+          "description": "The current remaining principal balance of the loan."
+        },
+        "outstandingInterest": {
+          "type": "number",
+          "description": "The current accrued but unpaid interest on the loan."
+        },
+        "isOutsiderLoan": {
+          "type": "boolean",
+          "description": "Indicates if this loan was given to an entity not registered as a member."
+        },
+        "outsiderName": {
+          "type": "string",
+          "description": "The name of the outsider if 'isOutsiderLoan' is true and 'memberId' is null."
+        },
+        "comment": {
+          "type": "string",
+          "description": "Optional comment or notes about the loan."
+        },
+        "createdAt": {
+          "type": "string",
+          "description": "Timestamp when the loan record was created.",
+          "format": "date-time"
+        },
+        "updatedAt": {
+          "type": "string",
+          "description": "Timestamp when the loan record was last updated.",
+          "format": "date-time"
+        }
+      },
+      "required": [
+        "id",
+        "loanAmount",
+        "interestRate",
+        "loanDate",
+        "outstandingPrincipal",
+        "outstandingInterest",
+        "isOutsiderLoan",
+        "createdAt",
+        "updatedAt"
+      ]
+    },
+    "DepositEntry": {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "title": "DepositEntry",
+      "type": "object",
+      "description": "Records the status and details of a member's monthly deposit for a specific period, including any applied fines.",
+      "properties": {
+        "id": {
+          "type": "string",
+          "description": "Unique identifier for the Deposit Entry entity."
+        },
+        "memberId": {
+          "type": "string",
+          "description": "Reference to the Member who made or was expected to make the deposit. (Relationship: Member 1:N DepositEntry)"
+        },
+        "month": {
+          "type": "number",
+          "description": "The month for which the deposit is due/paid (1 for January, 12 for December)."
+        },
+        "year": {
+          "type": "number",
+          "description": "The year for which the deposit is due/paid."
+        },
+        "expectedAmount": {
+          "type": "number",
+          "description": "The expected monthly deposit amount for this period (e.g., ₹500)."
+        },
+        "paidAmount": {
+          "type": "number",
+          "description": "The actual amount paid for this monthly deposit. Can be 0 if pending/missed."
+        },
+        "status": {
+          "type": "string",
+          "description": "The status of the deposit (e.g., 'Paid', 'Pending', 'Overdue')."
+        },
+        "lateFineApplied": {
+          "type": "number",
+          "description": "The amount of late fine applied for this specific deposit period, if any."
+        },
+        "paymentDate": {
+          "type": "string",
+          "description": "The date and time when the deposit payment was recorded, if paid.",
+          "format": "date-time"
+        },
+        "comment": {
+          "type": "string",
+          "description": "Optional comment or notes about the deposit."
+        },
+        "createdAt": {
+          "type": "string",
+          "description": "Timestamp when the deposit entry was created.",
+          "format": "date-time"
+        },
+        "updatedAt": {
+          "type": "string",
+          "description": "Timestamp when the deposit entry was last updated.",
+          "format": "date-time"
+        }
+      },
+      "required": [
+        "id",
+        "memberId",
+        "month",
+        "year",
+        "expectedAmount",
+        "paidAmount",
+        "status",
+        "lateFineApplied",
+        "createdAt",
+        "updatedAt"
+      ]
+    },
+    "RepaymentEntry": {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "title": "RepaymentEntry",
+      "type": "object",
+      "description": "Records a single repayment transaction made by a member towards a specific loan, detailing principal, interest, and fine components.",
+      "properties": {
+        "id": {
+          "type": "string",
+          "description": "Unique identifier for the Repayment Entry entity."
+        },
+        "memberId": {
+          "type": "string",
+          "description": "Reference to the Member who made the repayment. (Relationship: Member 1:N RepaymentEntry)"
+        },
+        "loanId": {
+          "type": "string",
+          "description": "Reference to the Loan this repayment is associated with. (Relationship: Loan 1:N RepaymentEntry)"
+        },
+        "repaymentDate": {
+          "type": "string",
+          "description": "The date and time when the repayment was made.",
+          "format": "date-time"
+        },
+        "principalPaid": {
+          "type": "number",
+          "description": "The portion of the repayment amount applied towards the loan's principal balance."
+        },
+        "interestPaid": {
+          "type": "number",
+          "description": "The portion of the repayment amount applied towards the loan's interest balance."
+        },
+        "finePaid": {
+          "type": "number",
+          "description": "The portion of the repayment amount applied towards outstanding fines, if any."
+        },
+        "expectedInterestAtRepayment": {
+          "type": "number",
+          "description": "The expected interest amount due at the time of this repayment, used for comparison (Expected vs Paid)."
+        },
+        "repaymentType": {
+          "type": "string",
+          "description": "Categorization of the repayment (e.g., 'PrincipalAndInterest', 'InterestOnly', 'PrincipalOnly', 'FineOnly')."
+        },
+        "comment": {
+          "type": "string",
+          "description": "Optional comment or notes about the repayment."
+        },
+        "createdAt": {
+          "type": "string",
+          "description": "Timestamp when the repayment record was created.",
+          "format": "date-time"
+        },
+        "updatedAt": {
+          "type": "string",
+          "description": "Timestamp when the repayment record was last updated.",
+          "format": "date-time"
+        }
+      },
+      "required": [
+        "id",
+        "memberId",
+        "loanId",
+        "repaymentDate",
+        "principalPaid",
+        "interestPaid",
+        "finePaid",
+        "repaymentType",
+        "createdAt",
+        "updatedAt"
+      ]
+    },
+    "Transaction": {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "title": "Transaction",
+      "type": "object",
+      "description": "A generalized ledger entry representing any financial movement within the system, linking to specific detailed records where applicable.",
+      "properties": {
+        "id": {
+          "type": "string",
+          "description": "Unique identifier for the Transaction entity (ledger entry)."
+        },
+        "transactionDate": {
+          "type": "string",
+          "description": "The date and time when the transaction occurred.",
+          "format": "date-time"
+        },
+        "transactionType": {
+          "type": "string",
+          "description": "The specific type of financial transaction (e.g., 'Deposit', 'LoanDisbursement', 'InterestPayment', 'PrincipalRepayment', 'FinePayment', 'LateFineCharge', 'InterestAccrual')."
+        },
+        "amount": {
+          "type": "number",
+          "description": "The monetary amount of the transaction."
+        },
+        "memberId": {
+          "type": "string",
+          "description": "Reference to the Member associated with this transaction. (Relationship: Member 0:N Transaction). Optional for system-wide or outsider-related transactions."
+        },
+        "relatedEntityId": {
+          "type": "string",
+          "description": "Reference to the ID of the specific entity (e.g., DepositEntry, Loan, RepaymentEntry) that this transaction details. Optional for general ledger entries like interest accrual not tied to a specific payment."
+        },
+        "relatedEntityType": {
+          "type": "string",
+          "description": "The type of the entity referenced by 'relatedEntityId' (e.g., 'DepositEntry', 'Loan', 'RepaymentEntry')."
+        },
+        "fundCategory": {
+          "type": "string",
+          "description": "Categorization of the fund affected by this transaction (e.g., 'PrincipalFund', 'InterestFund', 'FineFund', 'OperatingFund')."
+        },
+        "balanceImpact": {
+          "type": "string",
+          "description": "Indicates the impact on the overall fund balance (e.g., 'Debit' for outflow, 'Credit' for inflow)."
+        },
+        "comment": {
+          "type": "string",
+          "description": "Optional comment or notes about the transaction."
+        },
+        "createdAt": {
+          "type": "string",
+          "description": "Timestamp when the transaction record was created.",
+          "format": "date-time"
+        },
+        "updatedAt": {
+          "type": "string",
+          "description": "Timestamp when the transaction record was last updated.",
+          "format": "date-time"
+        }
+      },
+      "required": [
+        "id",
+        "transactionDate",
+        "transactionType",
+        "amount",
+        "fundCategory",
+        "balanceImpact",
+        "createdAt",
+        "updatedAt"
+      ]
+    }
+  },
+  "auth": {
+    "providers": [
+      "password",
+      "anonymous"
+    ]
+  },
+  "firestore": {
+    "structure": [
+      {
+        "path": "/members/{memberId}",
+        "definition": {
+          "entityName": "Member",
+          "schema": {
+            "$ref": "#/backend/entities/Member"
+          },
+          "description": "Stores individual member profiles. Each document represents a unique member. Admins can manage all member profiles. Members can read their own profiles.",
+          "params": [
+            {
+              "name": "memberId",
+              "description": "The unique identifier for a member, matching the 'id' field within the Member document."
+            }
+          ]
+        }
+      },
+      {
+        "path": "/loans/{loanId}",
+        "definition": {
+          "entityName": "Loan",
+          "schema": {
+            "$ref": "#/backend/entities/Loan"
+          },
+          "description": "Stores details of all loans issued, whether to members or outsiders. Includes 'memberId' (if applicable) for direct linkage and authorization, enabling both admin-level 'all loans' queries and member-specific 'my loans' queries. Supports QAPs.",
+          "params": [
+            {
+              "name": "loanId",
+              "description": "The unique identifier for a loan, matching the 'id' field within the Loan document."
+            }
+          ]
+        }
+      },
+      {
+        "path": "/depositEntries/{depositEntryId}",
+        "definition": {
+          "entityName": "DepositEntry",
+          "schema": {
+            "$ref": "#/backend/entities/DepositEntry"
+          },
+          "description": "Records monthly deposit information for members. Each document includes 'memberId' for authorization independence, allowing members to access their own deposit history and supporting QAPs for secure list operations.",
+          "params": [
+            {
+              "name": "depositEntryId",
+              "description": "The unique identifier for a deposit entry, matching the 'id' field within the DepositEntry document."
+            }
+          ]
+        }
+      },
+      {
+        "path": "/repaymentEntries/{repaymentEntryId}",
+        "definition": {
+          "entityName": "RepaymentEntry",
+          "schema": {
+            "$ref": "#/backend/entities/RepaymentEntry"
+          },
+          "description": "Stores individual repayment transactions made towards specific loans. Each document includes 'memberId' and 'loanId' for authorization, traceability, and secure querying by both members and admins.",
+          "params": [
+            {
+              "name": "repaymentEntryId",
+              "description": "The unique identifier for a repayment entry, matching the 'id' field within the RepaymentEntry document."
+            }
+          ]
+        }
+      },
+      {
+        "path": "/transactions/{transactionId}",
+        "definition": {
+          "entityName": "Transaction",
+          "schema": {
+            "$ref": "#/backend/entities/Transaction"
+          },
+          "description": "A generalized ledger entry for all financial movements within the system. Includes 'memberId' (if applicable) and 'relatedEntityId' for comprehensive traceability and to enable the 'Member Passbook' feature with QAP-compliant secure queries.",
+          "params": [
+            {
+              "name": "transactionId",
+              "description": "The unique identifier for a transaction, matching the 'id' field within the Transaction document."
+            }
+          ]
+        }
+      },
+      {
+        "path": "/roles_admin/{userId}",
+        "definition": {
+          "entityName": "Admin",
+          "schema": {
+            "$ref": "#/backend/entities/Admin"
+          },
+          "description": "A collection used for Database Access Control (DBAC). The existence of a document at this path, where '{userId}' is a Firebase Authentication UID, grants administrative privileges to that user. This collection is for authorization rules and does not represent a core business entity. (Note: Assumes a conceptual 'Admin' entity schema for role management, even if not explicitly provided in main business entities.)",
+          "params": [
+            {
+              "name": "userId",
+              "description": "The Firebase Authentication UID of the user designated as an administrator."
+            }
+          ]
+        }
+      }
+    ],
+    "reasoning": "The recommended Firestore structure is designed with a strong emphasis on Authorization Independence, Structural Segregation, and Database Access Control (DBAC) to ensure security, scalability, and debuggability. All primary data entities are housed in top-level collections, with authorization contexts (like `memberId`) denormalized directly into each document. This approach eliminates the need for `get()` operations in security rules, promoting atomic operations and simplifying rule logic. \n\n**Authorization Independence & QAPs (Query-Approve-Project):**\n\n1.  **Top-Level Collections for Business Entities:** Collections like `/members`, `/loans`, `/depositEntries`, `/repaymentEntries`, and `/transactions` are top-level. This prevents deep nesting and allows for efficient, broad queries (e.g., an admin retrieving all loans) without requiring multiple document fetches across subcollections.\n2.  **Denormalized `memberId`:** For all member-related data (`Loan`, `DepositEntry`, `RepaymentEntry`, `Transaction`), the `memberId` is explicitly included as a field in each document. This is critical for authorization independence. Security rules can directly evaluate `request.auth.uid == resource.data.memberId` to grant access to a specific member's data (e.g., their deposits, loans, or passbook entries). This strategy avoids the need for `get()` calls to parent documents (e.g., getting a `/members/{memberId}` document to check if the current user is that member), which would otherwise break atomic operations and complicate rules.\n3.  **Secure `list` Operations (QAPs):** By denormalizing `memberId` and using top-level collections, `list` queries become inherently secure. For example, a user requesting their transactions would query `db.collection('transactions').where('memberId', '==', request.auth.uid)`. The security rule can directly validate `request.auth.uid` against `resource.data.memberId` (and combine with an `isAdmin()` check), ensuring only authorized data is returned. This adheres to QAPs because the query itself filters for the user's data, and the rule approves that filtered set without needing to filter data not specified in the query.\n\n**Structural Segregation & DBAC:**\n\n1.  **Homogeneous Security Posture:** Each collection holds documents that share similar security requirements. For example, all documents in `/members` are either accessible by the owning member (read-only) or by an administrator (full CRUD). This prevents mixing data with different access levels in a single collection, simplifying security rules significantly.\n2.  **Dedicated Admin Role Collection:** A separate collection, `/roles_admin/{userId}`, is established to implement Database Access Control (DBAC). The mere existence of a document with a user's UID in this collection signifies that the user has administrative privileges. This method keeps roles explicitly in the database, relying solely on `request.auth.uid` for rule evaluation, and is easily auditable without using custom claims.\n\n**Addressing the User's Issue:**\n\nThe previous issue of 'added data not showing up' is likely due to incorrect client-side querying or overly restrictive/incorrect security rules. This structure simplifies querying significantly. For instance, to display all members, an admin client queries `/members`. To display a specific member's loans, the client queries `/loans` filtered by `memberId`. This explicit and flat structure makes debugging query issues or security rule failures much more straightforward, as the authorization context is always directly on the document being accessed or derived from the path (`{userId}` in `/roles_admin`)."
+  }
+}

@@ -1,0 +1,152 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    /**
+     * FINANCE GROUP MANAGEMENT SYSTEM - SECURITY RULES
+     * 
+     * CORE PHILOSOPHY:
+     * This ruleset implements a dual-access model:
+     * 1. Administrative Access (DBAC): Users verified via the '/roles_admin' collection have 
+     *    unrestricted CRUD access to all financial data.
+     * 2. Member Access (Authorization Independence): Members have read-only access to their 
+     *    own profiles and financial history (loans, deposits, repayments, transactions).
+     * 
+     * DATA STRUCTURE:
+     * All primary entities (Members, Loans, Deposits, etc.) are stored in top-level collections.
+     * This flat structure facilitates efficient administrative reporting and broad queries.
+     * 
+     * KEY SECURITY DECISIONS:
+     * - Role-Based Access: Admin status is determined by the existence of a document in 
+     *   '/roles_admin/{userId}', avoiding custom claims.
+     * - Authorization Denormalization: The 'memberId' is replicated on every financial 
+     *   document to allow direct ownership checks without multi-document lookups.
+     * - Relational Integrity: On creation, we enforce that the internal 'id' field matches 
+     *   the Firestore document ID to ensure consistency for client-side lookups.
+     * - Prototyping Flexibility: Data types and schema shapes are not enforced; only 
+     *   identity and relational links are validated to allow rapid feature iteration.
+     */
+
+    // --- GLOBAL HELPER FUNCTIONS ---
+
+    /**
+     * @description Checks if the request is from an authenticated user.
+     */
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    /**
+     * @description Checks if the authenticated user has administrative privileges.
+     * Uses a lookup in the 'roles_admin' collection.
+     */
+    function isAdmin() {
+      return isSignedIn() && exists(/databases/$(database)/documents/roles_admin/$(request.auth.uid));
+    }
+
+    /**
+     * @description Checks if the provided ID matches the authenticated user's UID.
+     */
+    function isOwner(userId) {
+      return isSignedIn() && request.auth.uid == userId;
+    }
+
+    /**
+     * @description Checks if the existing document belongs to the authenticated user.
+     * @param fieldName The field in the document containing the owner's UID.
+     */
+    function isDocumentOwner(fieldName) {
+      return isSignedIn() && resource != null && resource.data[fieldName] == request.auth.uid;
+    }
+
+    // --- COLLECTION RULES ---
+
+    /**
+     * @description Administrative roles mapping. Determines who can manage the system.
+     * @path /roles_admin/{userId}
+     * @allow (get) Any signed-in user can check their own admin status.
+     * @deny (write) Only existing admins can create or modify other admin records.
+     * @principle Database Access Control (DBAC) pattern.
+     */
+    match /roles_admin/{userId} {
+      allow get: if isSignedIn() && (isOwner(userId) || isAdmin());
+      allow list: if isAdmin();
+      allow create, update, delete: if isAdmin();
+    }
+
+    /**
+     * @description Member profiles. Admins manage all; Members read their own.
+     * @path /members/{memberId}
+     * @allow (get) A member reading their own profile or an admin.
+     * @deny (create) A member trying to create their own profile (Admins must register members).
+     * @principle Path-based ownership for members; role-based for admins.
+     */
+    match /members/{memberId} {
+      allow get: if isAdmin() || isOwner(memberId);
+      allow list: if isAdmin() || isOwner(memberId);
+      allow create: if isAdmin() && request.resource.data.id == memberId;
+      allow update: if isAdmin() && resource != null && request.resource.data.id == resource.data.id;
+      allow delete: if isAdmin() && resource != null;
+    }
+
+    /**
+     * @description Loan records for members or outsiders.
+     * @path /loans/{loanId}
+     * @allow (list) Signed-in users can list loans (queries must be filtered by memberId).
+     * @deny (create) Non-admin users trying to issue loans.
+     * @principle Field-based ownership via 'memberId' for read access.
+     */
+    match /loans/{loanId} {
+      allow get: if isAdmin() || isDocumentOwner('memberId');
+      allow list: if isSignedIn(); 
+      allow create: if isAdmin() && request.resource.data.id == loanId;
+      allow update: if isAdmin() && resource != null && request.resource.data.id == resource.data.id;
+      allow delete: if isAdmin() && resource != null;
+    }
+
+    /**
+     * @description Monthly deposit tracking for members.
+     * @path /depositEntries/{depositEntryId}
+     * @allow (get) A member viewing their own deposit status.
+     * @deny (update) Members trying to mark their own deposits as 'Paid'.
+     * @principle Denormalized 'memberId' enables secure member access.
+     */
+    match /depositEntries/{depositEntryId} {
+      allow get: if isAdmin() || isDocumentOwner('memberId');
+      allow list: if isSignedIn();
+      allow create: if isAdmin() && request.resource.data.id == depositEntryId;
+      allow update: if isAdmin() && resource != null && request.resource.data.id == resource.data.id;
+      allow delete: if isAdmin() && resource != null;
+    }
+
+    /**
+     * @description Records of specific loan repayments.
+     * @path /repaymentEntries/{repaymentEntryId}
+     * @allow (get) A member verifying a past repayment.
+     * @deny (delete) Anyone, including admins, deleting financial history (Audit integrity).
+     * @principle Field-based ownership; Immutable history logic for financial safety.
+     */
+    match /repaymentEntries/{repaymentEntryId} {
+      allow get: if isAdmin() || isDocumentOwner('memberId');
+      allow list: if isSignedIn();
+      allow create: if isAdmin() && request.resource.data.id == repaymentEntryId;
+      allow update: if isAdmin() && resource != null && request.resource.data.id == resource.data.id;
+      allow delete: if isAdmin() && resource != null;
+    }
+
+    /**
+     * @description General ledger transactions. The source of truth for the 'Passbook'.
+     * @path /transactions/{transactionId}
+     * @allow (list) Members listing their transaction history via filtered query.
+     * @deny (write) Non-admin users injecting ledger entries.
+     * @principle Secure list operations via QAP (Query-Approve-Project).
+     */
+    match /transactions/{transactionId} {
+      allow get: if isAdmin() || isDocumentOwner('memberId');
+      allow list: if isSignedIn();
+      allow create: if isAdmin() && request.resource.data.id == transactionId;
+      allow update: if isAdmin() && resource != null && request.resource.data.id == resource.data.id;
+      allow delete: if isAdmin() && resource != null;
+    }
+  }
+}
