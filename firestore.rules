@@ -1,3 +1,4 @@
+
 rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
@@ -5,15 +6,16 @@ service cloud.firestore {
     /**
      * FINANCE GROUP MANAGEMENT SYSTEM - SECURITY RULES
      * 
-     * TRIGGER DEPLOYMENT: Ensuring all authenticated users (including anonymous ones)
-     * have full access to the database for this prototype phase.
+     * RE-DEPLOYMENT TRIGGER: Updating rules to explicitly allow authenticated access 
+     * for the prototype. Timestamp: 2024-05-24T12:00:00Z
      */
 
     function isSignedIn() {
       return request.auth != null;
     }
 
-    // Relaxed rules for the prototype to allow full access to authenticated users
+    // Relaxed rules for the prototype to allow full access to all authenticated users
+    // This includes users signed in anonymously.
     match /{document=**} {
       allow read, write: if isSignedIn();
     }

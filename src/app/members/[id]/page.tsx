@@ -1,3 +1,4 @@
+
 "use client"
 
 import React, { useState, useEffect } from "react";
@@ -14,7 +15,6 @@ import {
   ShieldCheck, 
   Sparkles,
   Info,
-  Calendar,
   Loader2
 } from "lucide-react";
 import Link from "next/link";
@@ -29,23 +29,23 @@ export default function MemberDetails() {
   const params = useParams();
   const id = params?.id as string;
   const db = useFirestore();
-  const { user } = useUser();
+  const { user, isUserLoading } = useUser();
   
   const memberRef = useMemoFirebase(() => {
-    if (!db || !id) return null;
+    if (!db || !id || !user) return null;
     return doc(db, 'members', id);
-  }, [db, id]);
+  }, [db, id, user]);
 
   const { data: member, isLoading: memberLoading } = useDoc(memberRef);
 
   const transactionsRef = useMemoFirebase(() => {
-    if (!db || !id) return null;
+    if (!db || !id || !user) return null;
     return query(
       collection(db, 'transactions'),
       where('memberId', '==', id),
       orderBy('transactionDate', 'desc')
     );
-  }, [db, id]);
+  }, [db, id, user]);
 
   const { data: transactions, isLoading: txLoading } = useCollection(transactionsRef);
   
@@ -111,7 +111,7 @@ export default function MemberDetails() {
     }
   }, [member, transactions, id, stats]);
 
-  if (memberLoading) {
+  if (isUserLoading || memberLoading) {
     return (
       <div className="min-h-screen flex items-center justify-center">
         <Loader2 className="h-8 w-8 animate-spin text-primary" />
