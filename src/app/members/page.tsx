@@ -1,5 +1,6 @@
 "use client"
 
+import React, { useState } from "react";
 import { Navbar } from "@/components/layout/Navbar";
 import { 
   Table, 
@@ -12,7 +13,7 @@ import {
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { Search, UserPlus, Filter, MoreHorizontal, Loader2 } from "lucide-react";
+import { Search, UserPlus, Filter, MoreHorizontal, Loader2, Trash2 } from "lucide-react";
 import Link from "next/link";
 import { 
   DropdownMenu, 
@@ -21,12 +22,26 @@ import {
   DropdownMenuTrigger 
 } from "@/components/ui/dropdown-menu";
 import { Card } from "@/components/ui/card";
+import { 
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import { useFirestore, useCollection, useMemoFirebase, useUser } from "@/firebase";
-import { collection } from "firebase/firestore";
+import { collection, doc } from "firebase/firestore";
+import { deleteDocumentNonBlocking } from "@/firebase/non-blocking-updates";
+import { useToast } from "@/hooks/use-toast";
 
 export default function MembersPage() {
   const db = useFirestore();
   const { user, isUserLoading } = useUser();
+  const { toast } = useToast();
+  const [memberToDelete, setMemberToDelete] = useState<any | null>(null);
   
   const membersRef = useMemoFirebase(() => {
     if (!db || !user) return null;
@@ -34,6 +49,18 @@ export default function MembersPage() {
   }, [db, user]);
 
   const { data: members, isLoading } = useCollection(membersRef);
+
+  const handleDelete = () => {
+    if (memberToDelete && db) {
+      const mRef = doc(db, 'members', memberToDelete.id);
+      deleteDocumentNonBlocking(mRef);
+      toast({
+        title: "Member deleted",
+        description: `${memberToDelete.name} has been successfully removed.`,
+      });
+      setMemberToDelete(null);
+    }
+  };
 
   if (isUserLoading) {
     return (
@@ -125,7 +152,14 @@ export default function MembersPage() {
                               <Link href={`/members/${member.id}`}>View Passbook</Link>
                             </DropdownMenuItem>
                             <DropdownMenuItem>Edit Profile</DropdownMenuItem>
-                            <DropdownMenuItem className="text-destructive">Deactivate</DropdownMenuItem>
+                            <DropdownMenuItem className="text-amber-600 focus:text-amber-700">Deactivate</DropdownMenuItem>
+                            <DropdownMenuItem 
+                              className="text-destructive focus:text-destructive flex items-center gap-2"
+                              onSelect={() => setMemberToDelete(member)}
+                            >
+                              <Trash2 className="h-4 w-4" />
+                              Delete Member
+                            </DropdownMenuItem>
                           </DropdownMenuContent>
                         </DropdownMenu>
                       </TableCell>
@@ -144,6 +178,26 @@ export default function MembersPage() {
           </div>
         </Card>
       </main>
+
+      <AlertDialog open={!!memberToDelete} onOpenChange={(open) => !open && setMemberToDelete(null)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Are you absolutely sure?</AlertDialogTitle>
+            <AlertDialogDescription>
+              This action cannot be undone. This will permanently delete <strong>{memberToDelete?.name}</strong> and remove their profile from the directory.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction 
+              onClick={handleDelete}
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+            >
+              Delete
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }
