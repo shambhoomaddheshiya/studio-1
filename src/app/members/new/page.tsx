@@ -1,6 +1,6 @@
 "use client"
 
-import React from "react";
+import React, { useState } from "react";
 import { Navbar } from "@/components/layout/Navbar";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -9,21 +9,69 @@ import { Label } from "@/components/ui/label";
 import { 
   ArrowLeft, 
   UserPlus,
-  ShieldCheck
+  ShieldCheck,
+  Loader2
 } from "lucide-react";
 import Link from "next/link";
 import { useToast } from "@/hooks/use-toast";
 import { useRouter } from "next/navigation";
+import { useFirestore } from "@/firebase";
+import { collection, doc } from "firebase/firestore";
+import { setDocumentNonBlocking } from "@/firebase/non-blocking-updates";
 
 export default function NewMemberPage() {
   const { toast } = useToast();
   const router = useRouter();
+  const db = useFirestore();
+  const [isSubmitting, setIsSubmitting] = useState(false);
 
-  function handleSubmit(e: React.FormEvent) {
+  function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
+    setIsSubmitting(true);
+
+    const formData = new FormData(e.currentTarget);
+    const name = formData.get('name') as string;
+    const mobile = formData.get('mobile') as string;
+    const initialDeposit = Number(formData.get('deposit'));
+    const customId = formData.get('id') as string;
+
+    const memberRef = doc(collection(db, "members"));
+    const memberId = customId || memberRef.id;
+    const finalRef = doc(db, "members", memberId);
+
+    const timestamp = new Date().toISOString();
+
+    setDocumentNonBlocking(finalRef, {
+      id: memberId,
+      name,
+      mobileNumber: mobile,
+      status: 'Active',
+      creditRating: 7, // Default initial rating
+      createdAt: timestamp,
+      updatedAt: timestamp,
+    }, { merge: true });
+
+    // If initial deposit is provided, record it as a transaction
+    if (initialDeposit > 0) {
+      const txRef = doc(collection(db, "transactions"));
+      setDocumentNonBlocking(txRef, {
+        id: txRef.id,
+        transactionDate: timestamp,
+        transactionType: 'Deposit',
+        amount: initialDeposit,
+        memberId: memberId,
+        memberName: name,
+        fundCategory: 'PrincipalFund',
+        balanceImpact: 'Credit',
+        comment: 'Initial membership deposit',
+        createdAt: timestamp,
+        updatedAt: timestamp,
+      }, { merge: true });
+    }
+
     toast({
       title: "Member added",
-      description: "The new member has been successfully registered.",
+      description: `${name} has been successfully registered.`,
     });
     router.push("/members");
   }
@@ -56,19 +104,19 @@ export default function NewMemberPage() {
               <div className="grid gap-4">
                 <div className="grid gap-2">
                   <Label htmlFor="name">Full Name</Label>
-                  <Input id="name" placeholder="Enter full name" required />
+                  <Input id="name" name="name" placeholder="Enter full name" required />
                 </div>
                 <div className="grid gap-2">
                   <Label htmlFor="mobile">Mobile Number</Label>
-                  <Input id="mobile" placeholder="e.g. 9876543210" required />
+                  <Input id="mobile" name="mobile" placeholder="e.g. 9876543210" required />
                 </div>
                 <div className="grid gap-2">
                   <Label htmlFor="deposit">Initial Deposit Amount (₹)</Label>
-                  <Input id="deposit" type="number" placeholder="0" defaultValue="500" />
+                  <Input id="deposit" name="deposit" type="number" placeholder="0" defaultValue="500" />
                 </div>
                 <div className="grid gap-2">
                   <Label htmlFor="id">Custom ID (Optional)</Label>
-                  <Input id="id" placeholder="FF-XXX" />
+                  <Input id="id" name="id" placeholder="FF-XXX" />
                 </div>
               </div>
 
@@ -80,10 +128,16 @@ export default function NewMemberPage() {
               </div>
 
               <div className="flex justify-end gap-3">
-                <Button variant="outline" type="button" asChild>
+                <Button variant="outline" type="button" asChild disabled={isSubmitting}>
                   <Link href="/members">Cancel</Link>
                 </Button>
-                <Button type="submit">Create Member Profile</Button>
+                <Button type="submit" disabled={isSubmitting}>
+                  {isSubmitting ? (
+                    <><Loader2 className="mr-2 h-4 w-4 animate-spin" /> Creating...</>
+                  ) : (
+                    'Create Member Profile'
+                  )}
+                </Button>
               </div>
             </form>
           </CardContent>

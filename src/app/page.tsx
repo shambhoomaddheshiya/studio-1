@@ -9,19 +9,32 @@ import {
   AlertCircle, 
   ArrowUpRight, 
   History,
-  Coins
+  Coins,
+  Loader2
 } from "lucide-react";
-import { MOCK_TRANSACTIONS } from "@/lib/mock-data";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import Link from "next/link";
 import { cn } from "@/lib/utils";
+import { useFirestore, useCollection, useMemoFirebase } from "@/firebase";
+import { collection, query, orderBy, limit } from "firebase/firestore";
 
 export default function Dashboard() {
-  const totalFunds = 125000;
-  const activeLoans = 85000;
-  const pendingDeposits = 12;
-  const totalInterestEarned = 15400;
+  const db = useFirestore();
+  const txQuery = useMemoFirebase(() => query(collection(db, 'transactions'), orderBy('transactionDate', 'desc'), limit(5)), [db]);
+  const allTxQuery = useMemoFirebase(() => collection(db, 'transactions'), [db]);
+  
+  const { data: recentTransactions, isLoading: txLoading } = useCollection(txQuery);
+  const { data: allTransactions } = useCollection(allTxQuery);
+  const { data: members } = useCollection(useMemoFirebase(() => collection(db, 'members'), [db]));
+
+  // Basic dynamic stats
+  const totalFunds = allTransactions?.reduce((acc, tx) => {
+    return tx.balanceImpact === 'Credit' ? acc + tx.amount : acc - tx.amount;
+  }, 0) || 0;
+  
+  const totalInterest = allTransactions?.filter(tx => tx.transactionType === 'InterestPayment')
+    .reduce((acc, tx) => acc + tx.amount, 0) || 0;
 
   return (
     <div className="min-h-screen flex flex-col">
@@ -40,25 +53,24 @@ export default function Dashboard() {
             value={`₹${totalFunds.toLocaleString()}`}
             icon={Coins}
             iconClassName="bg-blue-100 text-primary"
-            trend={{ value: 12, isPositive: true }}
+            trend={{ value: 0, isPositive: true }}
           />
           <StatCard 
-            title="Active Loans" 
-            value={`₹${activeLoans.toLocaleString()}`}
-            icon={HandCoins}
+            title="Active Members" 
+            value={members?.length || 0}
+            icon={Users}
             iconClassName="bg-aqua-100 text-accent"
           />
           <StatCard 
             title="Interest Earned" 
-            value={`₹${totalInterestEarned.toLocaleString()}`}
+            value={`₹${totalInterest.toLocaleString()}`}
             icon={TrendingUp}
             iconClassName="bg-green-100 text-green-600"
-            trend={{ value: 8, isPositive: true }}
           />
           <StatCard 
-            title="Pending Deposits" 
-            value={pendingDeposits}
-            description="Members awaiting payment"
+            title="Alerts" 
+            value={totalFunds < 5000 ? 1 : 0}
+            description="System status check"
             icon={AlertCircle}
             iconClassName="bg-amber-100 text-amber-600"
           />
@@ -78,32 +90,37 @@ export default function Dashboard() {
             </CardHeader>
             <CardContent>
               <div className="space-y-4">
-                {MOCK_TRANSACTIONS.slice(0, 5).map((tx) => (
-                  <div key={tx.id} className="flex items-center justify-between p-3 rounded-lg bg-background hover:bg-muted transition-colors">
-                    <div className="flex items-center gap-4">
-                      <div className={cn(
-                        "p-2 rounded-full",
-                        tx.type === 'deposit' ? 'bg-green-100 text-green-600' :
-                        tx.type === 'loan' ? 'bg-blue-100 text-primary' :
-                        'bg-purple-100 text-purple-600'
-                      )}>
-                        <ArrowUpRight className={cn("h-4 w-4", tx.type === 'loan' && "rotate-180")} />
+                {txLoading ? (
+                  <div className="flex justify-center p-8"><Loader2 className="animate-spin text-muted-foreground" /></div>
+                ) : (
+                  recentTransactions?.map((tx) => (
+                    <div key={tx.id} className="flex items-center justify-between p-3 rounded-lg bg-background hover:bg-muted transition-colors">
+                      <div className="flex items-center gap-4">
+                        <div className={cn(
+                          "p-2 rounded-full",
+                          tx.balanceImpact === 'Credit' ? 'bg-green-100 text-green-600' : 'bg-blue-100 text-primary'
+                        )}>
+                          <ArrowUpRight className={cn("h-4 w-4", tx.balanceImpact === 'Debit' && "rotate-180")} />
+                        </div>
+                        <div>
+                          <p className="text-sm font-medium">{tx.memberName}</p>
+                          <p className="text-xs text-muted-foreground capitalize">{tx.transactionType.replace(/([A-Z])/g, ' $1').trim()} • {new Date(tx.transactionDate).toLocaleDateString()}</p>
+                        </div>
                       </div>
-                      <div>
-                        <p className="text-sm font-medium">{tx.memberName}</p>
-                        <p className="text-xs text-muted-foreground capitalize">{tx.type.replace('_', ' ')} • {new Date(tx.date).toLocaleDateString()}</p>
+                      <div className="text-right">
+                        <p className={cn(
+                          "text-sm font-bold",
+                          tx.balanceImpact === 'Debit' ? 'text-destructive' : 'text-primary'
+                        )}>
+                          {tx.balanceImpact === 'Debit' ? '-' : '+'}₹{tx.amount.toLocaleString()}
+                        </p>
                       </div>
                     </div>
-                    <div className="text-right">
-                      <p className={cn(
-                        "text-sm font-bold",
-                        tx.type === 'loan' ? 'text-destructive' : 'text-primary'
-                      )}>
-                        {tx.type === 'loan' ? '-' : '+'}₹{tx.amount.toLocaleString()}
-                      </p>
-                    </div>
-                  </div>
-                ))}
+                  ))
+                )}
+                {(!recentTransactions || recentTransactions.length === 0) && !txLoading && (
+                  <p className="text-center text-muted-foreground py-8">No transactions yet.</p>
+                )}
               </div>
             </CardContent>
           </Card>
@@ -133,13 +150,15 @@ export default function Dashboard() {
               </CardHeader>
               <CardContent>
                 <div className="space-y-3">
-                  <div className="flex items-start gap-3 text-sm p-2 rounded-md bg-amber-50 text-amber-800 border border-amber-100">
+                  {totalFunds < 5000 && (
+                    <div className="flex items-start gap-3 text-sm p-2 rounded-md bg-amber-50 text-amber-800 border border-amber-100">
+                      <AlertCircle className="h-4 w-4 mt-0.5 shrink-0" />
+                      <p>Low Fund Alert: Available balance below ₹5,000.</p>
+                    </div>
+                  )}
+                  <div className="flex items-start gap-3 text-sm p-2 rounded-md bg-secondary/10 text-secondary-foreground border border-secondary/20">
                     <AlertCircle className="h-4 w-4 mt-0.5 shrink-0" />
-                    <p>Low Fund Alert: Available balance below ₹5,000.</p>
-                  </div>
-                  <div className="flex items-start gap-3 text-sm p-2 rounded-md bg-destructive/10 text-destructive border border-destructive/20">
-                    <AlertCircle className="h-4 w-4 mt-0.5 shrink-0" />
-                    <p>3 Members have outstanding interest payments over 30 days.</p>
+                    <p>System operational. All data synced to Firestore.</p>
                   </div>
                 </div>
               </CardContent>

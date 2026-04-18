@@ -1,6 +1,6 @@
 "use client"
 
-import React from "react";
+import React, { useState } from "react";
 import { Navbar } from "@/components/layout/Navbar";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -10,12 +10,12 @@ import { Textarea } from "@/components/ui/textarea";
 import { 
   ArrowLeft, 
   HandCoins,
-  Info
+  Info,
+  Loader2
 } from "lucide-react";
 import Link from "next/link";
 import { useToast } from "@/hooks/use-toast";
 import { useRouter } from "next/navigation";
-import { MOCK_MEMBERS } from "@/lib/mock-data";
 import { 
   Select, 
   SelectContent, 
@@ -23,16 +23,71 @@ import {
   SelectTrigger, 
   SelectValue 
 } from "@/components/ui/select";
+import { useFirestore, useCollection, useMemoFirebase } from "@/firebase";
+import { collection, doc } from "firebase/firestore";
+import { setDocumentNonBlocking } from "@/firebase/non-blocking-updates";
 
 export default function NewLoanPage() {
   const { toast } = useToast();
   const router = useRouter();
+  const db = useFirestore();
+  const [isSubmitting, setIsSubmitting] = useState(false);
 
-  function handleSubmit(e: React.FormEvent) {
+  const membersRef = useMemoFirebase(() => collection(db, 'members'), [db]);
+  const { data: members, isLoading: membersLoading } = useCollection(membersRef);
+
+  function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
+    setIsSubmitting(true);
+
+    const formData = new FormData(e.currentTarget);
+    const memberId = formData.get('memberId') as string;
+    const amount = Number(formData.get('amount'));
+    const interest = Number(formData.get('interest'));
+    const date = formData.get('date') as string;
+    const comment = formData.get('comment') as string;
+
+    const selectedMember = members?.find(m => m.id === memberId);
+    const memberName = selectedMember?.name || "Unknown Member";
+
+    const timestamp = new Date().toISOString();
+    const loanDate = date ? new Date(date).toISOString() : timestamp;
+
+    // 1. Create Loan Record
+    const loanRef = doc(collection(db, "loans"));
+    setDocumentNonBlocking(loanRef, {
+      id: loanRef.id,
+      memberId,
+      loanAmount: amount,
+      interestRate: interest / 100, // Monthly decimal
+      loanDate,
+      outstandingPrincipal: amount,
+      outstandingInterest: 0,
+      isOutsiderLoan: false,
+      comment,
+      createdAt: timestamp,
+      updatedAt: timestamp,
+    }, { merge: true });
+
+    // 2. Create Transaction Ledger Entry
+    const txRef = doc(collection(db, "transactions"));
+    setDocumentNonBlocking(txRef, {
+      id: txRef.id,
+      transactionDate: loanDate,
+      transactionType: 'LoanDisbursement',
+      amount,
+      memberId,
+      memberName,
+      fundCategory: 'PrincipalFund',
+      balanceImpact: 'Debit',
+      comment: `Loan disbursed: ${comment}`,
+      createdAt: timestamp,
+      updatedAt: timestamp,
+    }, { merge: true });
+
     toast({
       title: "Loan issued",
-      description: "The loan has been successfully disbursed to the member.",
+      description: `₹${amount} has been disbursed to ${memberName}.`,
     });
     router.push("/transactions");
   }
@@ -65,14 +120,14 @@ export default function NewLoanPage() {
               <div className="grid gap-4">
                 <div className="grid gap-2">
                   <Label>Recipient Member</Label>
-                  <Select required>
+                  <Select name="memberId" required>
                     <SelectTrigger>
-                      <SelectValue placeholder="Select member for loan" />
+                      <SelectValue placeholder={membersLoading ? "Loading members..." : "Select member for loan"} />
                     </SelectTrigger>
                     <SelectContent>
-                      {MOCK_MEMBERS.map(m => (
+                      {members?.map(m => (
                         <SelectItem key={m.id} value={m.id}>
-                          {m.name} (Credit: {m.creditScore}/10)
+                          {m.name} (Credit: {m.creditRating}/10)
                         </SelectItem>
                       ))}
                     </SelectContent>
@@ -82,22 +137,22 @@ export default function NewLoanPage() {
                 <div className="grid grid-cols-2 gap-4">
                   <div className="grid gap-2">
                     <Label htmlFor="amount">Loan Amount (₹)</Label>
-                    <Input id="amount" type="number" placeholder="Enter amount" required />
+                    <Input id="amount" name="amount" type="number" placeholder="Enter amount" required />
                   </div>
                   <div className="grid gap-2">
                     <Label htmlFor="interest">Interest Rate (% p.m.)</Label>
-                    <Input id="interest" type="number" defaultValue="2" step="0.5" required />
+                    <Input id="interest" name="interest" type="number" defaultValue="2" step="0.5" required />
                   </div>
                 </div>
 
                 <div className="grid gap-2">
                   <Label htmlFor="date">Disbursement Date</Label>
-                  <Input id="date" type="date" defaultValue={new Date().toISOString().split('T')[0]} required />
+                  <Input id="date" name="date" type="date" defaultValue={new Date().toISOString().split('T')[0]} required />
                 </div>
 
                 <div className="grid gap-2">
                   <Label htmlFor="comment">Purpose of Loan</Label>
-                  <Textarea id="comment" placeholder="Describe why the member needs the loan..." />
+                  <Textarea id="comment" name="comment" placeholder="Describe why the member needs the loan..." />
                 </div>
               </div>
 
@@ -113,10 +168,12 @@ export default function NewLoanPage() {
               </div>
 
               <div className="flex justify-end gap-3">
-                <Button variant="outline" type="button" asChild>
+                <Button variant="outline" type="button" asChild disabled={isSubmitting}>
                   <Link href="/">Cancel</Link>
                 </Button>
-                <Button type="submit" className="bg-primary hover:bg-primary/90">Approve & Disburse</Button>
+                <Button type="submit" className="bg-primary hover:bg-primary/90" disabled={isSubmitting}>
+                  {isSubmitting ? <><Loader2 className="mr-2 h-4 w-4 animate-spin" /> Processing...</> : 'Approve & Disburse'}
+                </Button>
               </div>
             </form>
           </CardContent>

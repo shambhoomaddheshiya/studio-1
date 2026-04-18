@@ -1,6 +1,6 @@
 "use client"
 
-import React from "react";
+import React, { useState } from "react";
 import { Navbar } from "@/components/layout/Navbar";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -10,12 +10,12 @@ import { Textarea } from "@/components/ui/textarea";
 import { 
   ArrowLeft, 
   Wallet,
-  Sparkles
+  Sparkles,
+  Loader2
 } from "lucide-react";
 import Link from "next/link";
 import { useToast } from "@/hooks/use-toast";
 import { useRouter } from "next/navigation";
-import { MOCK_MEMBERS } from "@/lib/mock-data";
 import { 
   Select, 
   SelectContent, 
@@ -23,16 +23,72 @@ import {
   SelectTrigger, 
   SelectValue 
 } from "@/components/ui/select";
+import { useFirestore, useCollection, useMemoFirebase } from "@/firebase";
+import { collection, doc } from "firebase/firestore";
+import { setDocumentNonBlocking } from "@/firebase/non-blocking-updates";
 
 export default function NewDepositPage() {
   const { toast } = useToast();
   const router = useRouter();
+  const db = useFirestore();
+  const [isSubmitting, setIsSubmitting] = useState(false);
 
-  function handleSubmit(e: React.FormEvent) {
+  const membersRef = useMemoFirebase(() => collection(db, 'members'), [db]);
+  const { data: members, isLoading: membersLoading } = useCollection(membersRef);
+
+  function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
+    setIsSubmitting(true);
+
+    const formData = new FormData(e.currentTarget);
+    const memberId = formData.get('memberId') as string;
+    const type = formData.get('type') as string;
+    const amount = Number(formData.get('amount'));
+    const date = formData.get('date') as string;
+    const comment = formData.get('comment') as string;
+
+    const selectedMember = members?.find(m => m.id === memberId);
+    const memberName = selectedMember?.name || "Unknown Member";
+
+    const timestamp = new Date().toISOString();
+    const entryDate = date ? new Date(date).toISOString() : timestamp;
+
+    // 1. Create Deposit Entry
+    const depositRef = doc(collection(db, "depositEntries"));
+    setDocumentNonBlocking(depositRef, {
+      id: depositRef.id,
+      memberId,
+      month: new Date(entryDate).getMonth() + 1,
+      year: new Date(entryDate).getFullYear(),
+      expectedAmount: 500, // Assuming static rule for now
+      paidAmount: amount,
+      status: 'Paid',
+      lateFineApplied: 0,
+      paymentDate: entryDate,
+      comment,
+      createdAt: timestamp,
+      updatedAt: timestamp,
+    }, { merge: true });
+
+    // 2. Create Transaction Ledger Entry
+    const txRef = doc(collection(db, "transactions"));
+    setDocumentNonBlocking(txRef, {
+      id: txRef.id,
+      transactionDate: entryDate,
+      transactionType: type === 'deposit' ? 'Deposit' : type === 'fine_payment' ? 'FinePayment' : 'InterestPayment',
+      amount,
+      memberId,
+      memberName,
+      fundCategory: type === 'fine_payment' ? 'FineFund' : 'PrincipalFund',
+      balanceImpact: 'Credit',
+      comment,
+      createdAt: timestamp,
+      updatedAt: timestamp,
+    }, { merge: true });
+
     toast({
-      title: "Deposit recorded",
-      description: "The monthly deposit has been added to the member's account.",
+      title: "Transaction recorded",
+      description: `₹${amount} has been added to ${memberName}'s account.`,
     });
     router.push("/transactions");
   }
@@ -65,14 +121,14 @@ export default function NewDepositPage() {
               <div className="grid gap-4">
                 <div className="grid gap-2">
                   <Label>Member</Label>
-                  <Select required>
+                  <Select name="memberId" required>
                     <SelectTrigger>
-                      <SelectValue placeholder="Select a member" />
+                      <SelectValue placeholder={membersLoading ? "Loading members..." : "Select a member"} />
                     </SelectTrigger>
                     <SelectContent>
-                      {MOCK_MEMBERS.map(m => (
+                      {members?.map(m => (
                         <SelectItem key={m.id} value={m.id}>
-                          {m.name} ({m.id})
+                          {m.name} ({m.id.substring(0, 6)})
                         </SelectItem>
                       ))}
                     </SelectContent>
@@ -82,7 +138,7 @@ export default function NewDepositPage() {
                 <div className="grid grid-cols-2 gap-4">
                   <div className="grid gap-2">
                     <Label htmlFor="type">Type</Label>
-                    <Select defaultValue="deposit">
+                    <Select name="type" defaultValue="deposit">
                       <SelectTrigger>
                         <SelectValue />
                       </SelectTrigger>
@@ -95,19 +151,19 @@ export default function NewDepositPage() {
                   </div>
                   <div className="grid gap-2">
                     <Label htmlFor="amount">Amount (₹)</Label>
-                    <Input id="amount" type="number" placeholder="500" required />
+                    <Input id="amount" name="amount" type="number" placeholder="500" required />
                   </div>
                 </div>
 
                 <div className="grid gap-2">
                   <Label htmlFor="date">Date</Label>
-                  <Input id="date" type="date" defaultValue={new Date().toISOString().split('T')[0]} required />
+                  <Input id="date" name="date" type="date" defaultValue={new Date().toISOString().split('T')[0]} required />
                 </div>
 
                 <div className="grid gap-2">
                   <Label htmlFor="comment">Comment</Label>
                   <div className="relative">
-                    <Textarea id="comment" placeholder="e.g. Contribution for March 2024" className="pr-10" />
+                    <Textarea id="comment" name="comment" placeholder="e.g. Contribution for March 2024" className="pr-10" />
                     <Button type="button" variant="ghost" size="icon" className="absolute right-2 top-2 h-8 w-8 text-accent">
                       <Sparkles className="h-4 w-4" />
                     </Button>
@@ -116,10 +172,12 @@ export default function NewDepositPage() {
               </div>
 
               <div className="flex justify-end gap-3">
-                <Button variant="outline" type="button" asChild>
+                <Button variant="outline" type="button" asChild disabled={isSubmitting}>
                   <Link href="/">Cancel</Link>
                 </Button>
-                <Button type="submit">Record Transaction</Button>
+                <Button type="submit" disabled={isSubmitting}>
+                  {isSubmitting ? <><Loader2 className="mr-2 h-4 w-4 animate-spin" /> Recording...</> : 'Record Transaction'}
+                </Button>
               </div>
             </form>
           </CardContent>
