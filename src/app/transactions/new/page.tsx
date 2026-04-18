@@ -1,4 +1,3 @@
-
 "use client"
 
 import React, { useState } from "react";
@@ -13,7 +12,8 @@ import {
   Calendar as CalendarIcon, 
   X, 
   Loader2,
-  CheckCircle2
+  CheckCircle2,
+  Info
 } from "lucide-react";
 import Link from "next/link";
 import { useToast } from "@/hooks/use-toast";
@@ -55,6 +55,7 @@ export default function NewTransactionPage() {
     setIsSubmitting(true);
     const formData = new FormData(e.currentTarget);
     const description = formData.get('description') as string;
+    const loanIdForRepayment = formData.get('loan_id') as string;
     
     const selectedMember = members?.find(m => m.id === memberId);
     const memberName = selectedMember?.name || "Unknown Member";
@@ -64,8 +65,9 @@ export default function NewTransactionPage() {
     // Define all possible transaction fields
     const txConfigs = [
       { key: 'deposit_amount', type: 'Deposit', impact: 'Credit', fund: 'PrincipalFund' },
-      { key: 'loan_amount', type: 'LoanDisbursement', impact: 'Debit', fund: 'PrincipalFund' },
+      { key: 'interest_paid_amount', type: 'InterestPayment', impact: 'Credit', fund: 'InterestFund' },
       { key: 'repayment_amount', type: 'PrincipalRepayment', impact: 'Credit', fund: 'PrincipalFund' },
+      { key: 'loan_amount', type: 'LoanDisbursement', impact: 'Debit', fund: 'PrincipalFund' },
       { key: 'expense_amount', type: 'GeneralExpense', impact: 'Debit', fund: 'OperatingFund' },
       { key: 'waived_amount', type: 'LoanWaived', impact: 'Debit', fund: 'PrincipalFund' },
     ];
@@ -89,6 +91,7 @@ export default function NewTransactionPage() {
           fundCategory: config.fund,
           balanceImpact: config.impact,
           comment: description,
+          relatedEntityId: (config.key === 'repayment_amount' || config.key === 'interest_paid_amount') ? loanIdForRepayment : undefined,
           createdAt: timestamp,
           updatedAt: timestamp,
         }, { merge: true });
@@ -99,11 +102,27 @@ export default function NewTransactionPage() {
           setDocumentNonBlocking(repaymentRef, {
             id: repaymentRef.id,
             memberId,
+            loanId: loanIdForRepayment || 'unknown',
             repaymentDate: txDate,
             principalPaid: amount,
             interestPaid: 0,
             finePaid: 0,
             repaymentType: 'PrincipalOnly',
+            comment: description,
+            createdAt: timestamp,
+            updatedAt: timestamp,
+          }, { merge: true });
+        } else if (config.key === 'interest_paid_amount') {
+          const repaymentRef = doc(collection(db, "repaymentEntries"));
+          setDocumentNonBlocking(repaymentRef, {
+            id: repaymentRef.id,
+            memberId,
+            loanId: loanIdForRepayment || 'unknown',
+            repaymentDate: txDate,
+            principalPaid: 0,
+            interestPaid: amount,
+            finePaid: 0,
+            repaymentType: 'InterestOnly',
             comment: description,
             createdAt: timestamp,
             updatedAt: timestamp,
@@ -219,8 +238,15 @@ export default function NewTransactionPage() {
                       id="description" 
                       name="description" 
                       placeholder="Add any notes here..." 
-                      className="min-h-[140px] bg-slate-50 border-slate-200 resize-none"
+                      className="min-h-[120px] bg-slate-50 border-slate-200 resize-none"
                     />
+                  </div>
+
+                  <div className="p-4 rounded-lg bg-blue-50 border border-blue-100 flex gap-3 items-start">
+                    <Info className="h-4 w-4 text-blue-600 mt-0.5 shrink-0" />
+                    <p className="text-xs text-blue-800 leading-relaxed">
+                      Entering an amount in any field below will create a separate transaction record for that type.
+                    </p>
                   </div>
                 </div>
 
@@ -240,12 +266,33 @@ export default function NewTransactionPage() {
                     </div>
 
                     <div className="space-y-1.5">
-                      <Label htmlFor="repayment_amount" className="text-xs font-bold text-slate-600">Loan Repayment (₹)</Label>
+                      <Label htmlFor="interest_paid_amount" className="text-xs font-bold text-slate-600">Interest Paid (₹)</Label>
+                      <Input 
+                        id="interest_paid_amount" 
+                        name="interest_paid_amount" 
+                        type="number" 
+                        placeholder="0" 
+                        className="bg-white border-slate-200"
+                      />
+                    </div>
+
+                    <div className="space-y-1.5">
+                      <Label htmlFor="repayment_amount" className="text-xs font-bold text-slate-600">Loan Repayment (Principal) (₹)</Label>
                       <Input 
                         id="repayment_amount" 
                         name="repayment_amount" 
                         type="number" 
                         placeholder="0" 
+                        className="bg-white border-slate-200"
+                      />
+                    </div>
+
+                    <div className="space-y-1.5">
+                      <Label htmlFor="loan_id" className="text-xs font-bold text-slate-600">Loan ID (For Repayment/Interest)</Label>
+                      <Input 
+                        id="loan_id" 
+                        name="loan_id" 
+                        placeholder="e.g. LOAN-123" 
                         className="bg-white border-slate-200"
                       />
                     </div>
