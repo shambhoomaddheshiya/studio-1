@@ -57,28 +57,46 @@ export const FirebaseProvider: React.FC<FirebaseProviderProps> = ({
   const [userAuthState, setUserAuthState] = useState<UserAuthState>({
     user: null,
     isUserLoading: true,
+    userError: null,
   });
 
   useEffect(() => {
     if (!auth) return;
 
+    // Listen for auth state changes
     const unsubscribe = onAuthStateChanged(
       auth,
       (firebaseUser) => {
         if (firebaseUser) {
-          setUserAuthState({ user: firebaseUser, isUserLoading: false, userError: null });
+          // Successfully authenticated (either via existing session or new anonymous sign-in)
+          setUserAuthState({ 
+            user: firebaseUser, 
+            isUserLoading: false, 
+            userError: null 
+          });
         } else {
-          // If no user is found, sign in anonymously. 
-          // Keep isUserLoading true until the next auth state change event.
+          // No user session found, initiate anonymous sign-in
+          // We keep isUserLoading as true so components don't fetch data yet
           signInAnonymously(auth).catch((error) => {
-            setUserAuthState({ user: null, isUserLoading: false, userError: error });
+            console.error("Anonymous sign-in failed:", error);
+            setUserAuthState({ 
+              user: null, 
+              isUserLoading: false, 
+              userError: error 
+            });
           });
         }
       },
       (error) => {
-        setUserAuthState({ user: null, isUserLoading: false, userError: error });
+        console.error("Auth state change error:", error);
+        setUserAuthState({ 
+          user: null, 
+          isUserLoading: false, 
+          userError: error 
+        });
       }
     );
+    
     return () => unsubscribe();
   }, [auth]);
 
@@ -95,8 +113,8 @@ export const FirebaseProvider: React.FC<FirebaseProviderProps> = ({
     };
   }, [firebaseApp, firestore, auth, userAuthState]);
 
-  // Don't render children until the initial auth check is complete.
-  // This prevents components from attempting to fetch data with 'null' auth.
+  // CRITICAL: Prevent rendering children until the initial auth check is complete AND a user is present.
+  // This ensures that any queries created by children will have a valid auth token.
   if (userAuthState.isUserLoading) {
     return null; 
   }
