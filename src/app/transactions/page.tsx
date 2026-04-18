@@ -9,19 +9,33 @@ import { Plus, Download, Filter, Search, Loader2 } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import Link from "next/link";
 import { cn } from "@/lib/utils";
-import { useFirestore, useCollection, useMemoFirebase } from "@/firebase";
+import { useFirestore, useCollection, useMemoFirebase, useUser } from "@/firebase";
 import { collection, query, orderBy } from "firebase/firestore";
 
 export default function TransactionsPage() {
   const db = useFirestore();
-  const txRef = useMemoFirebase(() => query(collection(db, 'transactions'), orderBy('transactionDate', 'desc')), [db]);
+  const { user, isUserLoading } = useUser();
+
+  const txRef = useMemoFirebase(() => {
+    if (!db || !user) return null;
+    return query(collection(db, 'transactions'), orderBy('transactionDate', 'desc'));
+  }, [db, user]);
+
   const { data: transactions, isLoading } = useCollection(txRef);
+
+  if (isUserLoading) {
+    return (
+      <div className="min-h-screen flex items-center justify-center">
+        <Loader2 className="h-8 w-8 animate-spin text-primary" />
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen flex flex-col">
       <Navbar />
       
-      <main className="flex-1 p-4 sm:p-8 max-w-7xl mx-auto w-full space-y-6">
+      <main className="flex-1 p-4 sm:p-8 max-text-7xl mx-auto w-full space-y-6">
         <header className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
           <div>
             <h1 className="text-3xl font-bold tracking-tight text-primary font-headline">Transaction History</h1>

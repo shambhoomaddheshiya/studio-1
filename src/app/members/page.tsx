@@ -21,13 +21,27 @@ import {
   DropdownMenuTrigger 
 } from "@/components/ui/dropdown-menu";
 import { Card } from "@/components/ui/card";
-import { useFirestore, useCollection, useMemoFirebase } from "@/firebase";
+import { useFirestore, useCollection, useMemoFirebase, useUser } from "@/firebase";
 import { collection } from "firebase/firestore";
 
 export default function MembersPage() {
   const db = useFirestore();
-  const membersRef = useMemoFirebase(() => collection(db, 'members'), [db]);
+  const { user, isUserLoading } = useUser();
+  
+  const membersRef = useMemoFirebase(() => {
+    if (!db || !user) return null;
+    return collection(db, 'members');
+  }, [db, user]);
+
   const { data: members, isLoading } = useCollection(membersRef);
+
+  if (isUserLoading) {
+    return (
+      <div className="min-h-screen flex items-center justify-center">
+        <Loader2 className="h-8 w-8 animate-spin text-primary" />
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen flex flex-col">

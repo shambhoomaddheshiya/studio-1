@@ -16,17 +16,39 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import Link from "next/link";
 import { cn } from "@/lib/utils";
-import { useFirestore, useCollection, useMemoFirebase } from "@/firebase";
+import { useFirestore, useCollection, useMemoFirebase, useUser } from "@/firebase";
 import { collection, query, orderBy, limit } from "firebase/firestore";
 
 export default function Dashboard() {
   const db = useFirestore();
-  const txQuery = useMemoFirebase(() => query(collection(db, 'transactions'), orderBy('transactionDate', 'desc'), limit(5)), [db]);
-  const allTxQuery = useMemoFirebase(() => collection(db, 'transactions'), [db]);
+  const { user, isUserLoading } = useUser();
+
+  const txQuery = useMemoFirebase(() => {
+    if (!db || !user) return null;
+    return query(collection(db, 'transactions'), orderBy('transactionDate', 'desc'), limit(5));
+  }, [db, user]);
+
+  const allTxQuery = useMemoFirebase(() => {
+    if (!db || !user) return null;
+    return collection(db, 'transactions');
+  }, [db, user]);
+
+  const membersQuery = useMemoFirebase(() => {
+    if (!db || !user) return null;
+    return collection(db, 'members');
+  }, [db, user]);
   
   const { data: recentTransactions, isLoading: txLoading } = useCollection(txQuery);
   const { data: allTransactions } = useCollection(allTxQuery);
-  const { data: members } = useCollection(useMemoFirebase(() => collection(db, 'members'), [db]));
+  const { data: members } = useCollection(membersQuery);
+
+  if (isUserLoading) {
+    return (
+      <div className="min-h-screen flex items-center justify-center">
+        <Loader2 className="h-8 w-8 animate-spin text-primary" />
+      </div>
+    );
+  }
 
   // Basic dynamic stats
   const totalFunds = allTransactions?.reduce((acc, tx) => {
