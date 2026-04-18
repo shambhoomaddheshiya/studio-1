@@ -1,3 +1,4 @@
+
 "use client"
 
 import React, { useState } from "react";
@@ -13,7 +14,17 @@ import {
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { Search, UserPlus, Filter, MoreHorizontal, Loader2, Trash2, Edit } from "lucide-react";
+import { 
+  Search, 
+  UserPlus, 
+  Filter, 
+  MoreHorizontal, 
+  Loader2, 
+  Trash2, 
+  Edit, 
+  UserX, 
+  UserCheck 
+} from "lucide-react";
 import Link from "next/link";
 import { 
   DropdownMenu, 
@@ -34,7 +45,7 @@ import {
 } from "@/components/ui/alert-dialog";
 import { useFirestore, useCollection, useMemoFirebase, useUser } from "@/firebase";
 import { collection, doc } from "firebase/firestore";
-import { deleteDocumentNonBlocking } from "@/firebase/non-blocking-updates";
+import { deleteDocumentNonBlocking, updateDocumentNonBlocking } from "@/firebase/non-blocking-updates";
 import { useToast } from "@/hooks/use-toast";
 
 export default function MembersPage() {
@@ -72,6 +83,19 @@ export default function MembersPage() {
       });
       setMemberToDelete(null);
     }
+  };
+
+  const handleToggleStatus = (member: any) => {
+    const newStatus = member.status === 'Active' ? 'Inactive' : 'Active';
+    const mRef = doc(db, 'members', member.id);
+    updateDocumentNonBlocking(mRef, { 
+      status: newStatus,
+      updatedAt: new Date().toISOString()
+    });
+    toast({
+      title: `Member ${newStatus === 'Active' ? 'Activated' : 'Deactivated'}`,
+      description: `${member.name} is now ${newStatus.toLowerCase()}.`,
+    });
   };
 
   if (isUserLoading) {
@@ -175,6 +199,22 @@ export default function MembersPage() {
                                 <Edit className="h-4 w-4" />
                                 Edit Profile
                               </Link>
+                            </DropdownMenuItem>
+                            <DropdownMenuItem 
+                              onSelect={() => handleToggleStatus(member)}
+                              className="flex items-center gap-2"
+                            >
+                              {member.status === 'Active' ? (
+                                <>
+                                  <UserX className="h-4 w-4" />
+                                  Deactivate Member
+                                </>
+                              ) : (
+                                <>
+                                  <UserCheck className="h-4 w-4" />
+                                  Activate Member
+                                </>
+                              )}
                             </DropdownMenuItem>
                             <DropdownMenuItem className="text-destructive focus:text-destructive flex items-center gap-2" onSelect={() => setMemberToDelete(member)}>
                               <Trash2 className="h-4 w-4" />
