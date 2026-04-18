@@ -41,9 +41,19 @@ export default function NewTransactionPage() {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [date, setDate] = useState<Date>(new Date());
   const [memberId, setMemberId] = useState<string>("");
+  const [selectedLoanId, setSelectedLoanId] = useState<string>("");
 
   const membersRef = useMemoFirebase(() => collection(db, 'members'), [db]);
   const { data: members, isLoading: membersLoading } = useCollection(membersRef);
+
+  const loansRef = useMemoFirebase(() => collection(db, 'loans'), [db]);
+  const { data: allLoans, isLoading: loansLoading } = useCollection(loansRef);
+
+  // Filter loans for the selected member
+  const memberLoans = React.useMemo(() => {
+    if (!allLoans || !memberId) return [];
+    return allLoans.filter(loan => loan.memberId === memberId);
+  }, [allLoans, memberId]);
 
   async function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
@@ -55,6 +65,7 @@ export default function NewTransactionPage() {
     setIsSubmitting(true);
     const formData = new FormData(e.currentTarget);
     const description = formData.get('description') as string;
+    // Get loan_id from either the Select (via state or FormData)
     const loanIdForRepayment = formData.get('loan_id') as string;
     
     const selectedMember = members?.find(m => m.id === memberId);
@@ -91,13 +102,14 @@ export default function NewTransactionPage() {
           fundCategory: config.fund,
           balanceImpact: config.impact,
           comment: description,
-          relatedEntityId: (config.key === 'repayment_amount' || config.key === 'interest_paid_amount') ? loanIdForRepayment : undefined,
+          relatedEntityId: (config.type === 'PrincipalRepayment' || config.type === 'InterestPayment') ? loanIdForRepayment : undefined,
+          relatedEntityType: (config.type === 'PrincipalRepayment' || config.type === 'InterestPayment') ? 'Loan' : undefined,
           createdAt: timestamp,
           updatedAt: timestamp,
         }, { merge: true });
 
         // 2. Specialized Entity Creation
-        if (config.key === 'repayment_amount') {
+        if (config.type === 'PrincipalRepayment') {
           const repaymentRef = doc(collection(db, "repaymentEntries"));
           setDocumentNonBlocking(repaymentRef, {
             id: repaymentRef.id,
@@ -112,7 +124,7 @@ export default function NewTransactionPage() {
             createdAt: timestamp,
             updatedAt: timestamp,
           }, { merge: true });
-        } else if (config.key === 'interest_paid_amount') {
+        } else if (config.type === 'InterestPayment') {
           const repaymentRef = doc(collection(db, "repaymentEntries"));
           setDocumentNonBlocking(repaymentRef, {
             id: repaymentRef.id,
@@ -127,7 +139,7 @@ export default function NewTransactionPage() {
             createdAt: timestamp,
             updatedAt: timestamp,
           }, { merge: true });
-        } else if (config.key === 'deposit_amount') {
+        } else if (config.type === 'Deposit') {
           const depositRef = doc(collection(db, "depositEntries"));
           setDocumentNonBlocking(depositRef, {
             id: depositRef.id,
@@ -161,6 +173,12 @@ export default function NewTransactionPage() {
     router.push("/transactions");
   }
 
+  // Handle member change to clear selected loan
+  const handleMemberChange = (id: string) => {
+    setMemberId(id);
+    setSelectedLoanId("");
+  };
+
   return (
     <div className="min-h-screen flex flex-col bg-slate-50">
       <Navbar />
@@ -190,7 +208,7 @@ export default function NewTransactionPage() {
                   {/* Member Selection */}
                   <div className="space-y-2">
                     <Label className="text-slate-700 font-medium">Member</Label>
-                    <Select value={memberId} onValueChange={setMemberId} required>
+                    <Select value={memberId} onValueChange={handleMemberChange} required>
                       <SelectTrigger className="bg-slate-50 border-slate-200">
                         <SelectValue placeholder={membersLoading ? "Loading members..." : "Select a member"} />
                       </SelectTrigger>
@@ -289,12 +307,30 @@ export default function NewTransactionPage() {
 
                     <div className="space-y-1.5">
                       <Label htmlFor="loan_id" className="text-xs font-bold text-slate-600">Loan ID (For Repayment/Interest)</Label>
-                      <Input 
-                        id="loan_id" 
+                      <Select 
                         name="loan_id" 
-                        placeholder="e.g. LOAN-123" 
-                        className="bg-white border-slate-200"
-                      />
+                        value={selectedLoanId} 
+                        onValueChange={setSelectedLoanId}
+                        disabled={!memberId || memberLoans.length === 0}
+                      >
+                        <SelectTrigger className="bg-white border-slate-200 h-10">
+                          <SelectValue placeholder={
+                            !memberId 
+                              ? "Select a member first" 
+                              : (loansLoading ? "Loading loans..." : (memberLoans.length === 0 ? "No active loans found" : "Select active loan"))
+                          } />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {memberLoans.map(loan => (
+                            <SelectItem key={loan.id} value={loan.id}>
+                              Loan #{loan.id} (₹{loan.loanAmount.toLocaleString()})
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                      {!loansLoading && memberId && memberLoans.length === 0 && (
+                        <p className="text-[10px] text-muted-foreground italic">No active loans found for this member.</p>
+                      )}
                     </div>
 
                     <div className="space-y-1.5">
