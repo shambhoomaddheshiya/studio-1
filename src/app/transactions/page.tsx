@@ -47,6 +47,7 @@ export default function TransactionsPage() {
   const { user, isUserLoading } = useUser();
   const { toast } = useToast();
   const [searchTerm, setSearchTerm] = useState("");
+  const [activeFilter, setActiveFilter] = useState("All");
   const [txToDelete, setTxToDelete] = useState<any | null>(null);
   const [txToEdit, setTxToEdit] = useState<any | null>(null);
   const [isUpdating, setIsUpdating] = useState(false);
@@ -60,15 +61,34 @@ export default function TransactionsPage() {
 
   const transactions = React.useMemo(() => {
     if (!rawTransactions) return [];
-    if (!searchTerm) return rawTransactions;
-    const lowerSearch = searchTerm.toLowerCase();
-    return rawTransactions.filter(tx => 
-      tx.memberName?.toLowerCase().includes(lowerSearch) || 
-      tx.id?.toLowerCase().includes(lowerSearch) ||
-      tx.transactionType?.toLowerCase().includes(lowerSearch) ||
-      tx.comment?.toLowerCase().includes(lowerSearch)
-    );
-  }, [rawTransactions, searchTerm]);
+    
+    let filtered = rawTransactions;
+
+    // Search filter
+    if (searchTerm) {
+      const lowerSearch = searchTerm.toLowerCase();
+      filtered = filtered.filter(tx => 
+        tx.memberName?.toLowerCase().includes(lowerSearch) || 
+        tx.id?.toLowerCase().includes(lowerSearch) ||
+        tx.transactionType?.toLowerCase().includes(lowerSearch) ||
+        tx.comment?.toLowerCase().includes(lowerSearch)
+      );
+    }
+
+    // Category filter
+    if (activeFilter !== "All") {
+      filtered = filtered.filter(tx => {
+        if (activeFilter === "Deposits") return tx.transactionType === 'Deposit';
+        if (activeFilter === "Loans") return tx.transactionType === 'LoanDisbursement';
+        if (activeFilter === "Repayments") {
+          return ['PrincipalRepayment', 'InterestPayment', 'FinePayment'].includes(tx.transactionType);
+        }
+        return true;
+      });
+    }
+
+    return filtered;
+  }, [rawTransactions, searchTerm, activeFilter]);
 
   const handleDelete = () => {
     if (txToDelete && db) {
@@ -105,7 +125,6 @@ export default function TransactionsPage() {
       description: "Changes have been saved successfully.",
     });
     
-    // Reset state to close dialog
     setTxToEdit(null);
     setIsUpdating(false);
   };
@@ -154,10 +173,35 @@ export default function TransactionsPage() {
               />
             </div>
             <div className="flex items-center gap-2 w-full md:w-auto overflow-x-auto pb-2 md:pb-0">
-              <Badge variant="outline" className="cursor-pointer hover:bg-muted py-1 px-3">All</Badge>
-              <Badge variant="outline" className="cursor-pointer hover:bg-muted py-1 px-3">Deposits</Badge>
-              <Badge variant="outline" className="cursor-pointer hover:bg-muted py-1 px-3">Loans</Badge>
-              <Badge variant="outline" className="cursor-pointer hover:bg-muted py-1 px-3">Repayments</Badge>
+              <Badge 
+                variant={activeFilter === "All" ? "default" : "outline"} 
+                className="cursor-pointer hover:bg-muted py-1 px-3 transition-all"
+                onClick={() => setActiveFilter("All")}
+              >
+                All
+              </Badge>
+              <Badge 
+                variant={activeFilter === "Deposits" ? "default" : "outline"} 
+                className="cursor-pointer hover:bg-muted py-1 px-3 transition-all"
+                onClick={() => setActiveFilter("Deposits")}
+              >
+                Deposits
+              </Badge>
+              <Badge 
+                variant={activeFilter === "Loans" ? "default" : "outline"} 
+                className="cursor-pointer hover:bg-muted py-1 px-3 transition-all"
+                onClick={() => setActiveFilter("Loans")}
+              >
+                Loans
+              </Badge>
+              <Badge 
+                variant={activeFilter === "Repayments" ? "default" : "outline"} 
+                className="cursor-pointer hover:bg-muted py-1 px-3 transition-all"
+                onClick={() => setActiveFilter("Repayments")}
+              >
+                Repayments
+              </Badge>
+              <div className="h-4 w-px bg-border mx-2" />
               <Button variant="ghost" size="sm">
                 <Filter className="h-4 w-4 mr-2" />
                 More Filters
@@ -222,7 +266,6 @@ export default function TransactionsPage() {
                           <DropdownMenuContent align="end">
                             <DropdownMenuItem 
                               onSelect={() => {
-                                // Small delay ensures dropdown closes before dialog opens
                                 setTimeout(() => setTxToEdit(tx), 0);
                               }} 
                               className="flex items-center gap-2"
@@ -233,7 +276,6 @@ export default function TransactionsPage() {
                             <DropdownMenuItem 
                               className="text-destructive focus:text-destructive flex items-center gap-2" 
                               onSelect={() => {
-                                // Small delay ensures dropdown closes before dialog opens
                                 setTimeout(() => setTxToDelete(tx), 0);
                               }}
                             >
@@ -248,7 +290,7 @@ export default function TransactionsPage() {
                   {(transactions.length === 0) && (
                     <TableRow>
                       <TableCell colSpan={6} className="h-24 text-center text-muted-foreground">
-                        {searchTerm ? "No transactions match your search." : "No transactions recorded yet."}
+                        {searchTerm || activeFilter !== "All" ? "No transactions match your criteria." : "No transactions recorded yet."}
                       </TableCell>
                     </TableRow>
                   )}
@@ -259,7 +301,6 @@ export default function TransactionsPage() {
         </Card>
       </main>
 
-      {/* Delete Confirmation */}
       <AlertDialog 
         open={!!txToDelete} 
         onOpenChange={(open) => {
@@ -286,7 +327,6 @@ export default function TransactionsPage() {
         </AlertDialogContent>
       </AlertDialog>
 
-      {/* Edit Dialog */}
       <Dialog 
         open={!!txToEdit} 
         onOpenChange={(open) => {
