@@ -13,7 +13,7 @@ import {
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { Search, UserPlus, Filter, MoreHorizontal, Loader2, Trash2 } from "lucide-react";
+import { Search, UserPlus, Filter, MoreHorizontal, Loader2, Trash2, Edit } from "lucide-react";
 import Link from "next/link";
 import { 
   DropdownMenu, 
@@ -170,12 +170,13 @@ export default function MembersPage() {
                             <DropdownMenuItem asChild>
                               <Link href={`/members/${member.id}`}>View Passbook</Link>
                             </DropdownMenuItem>
-                            <DropdownMenuItem>Edit Profile</DropdownMenuItem>
-                            <DropdownMenuItem className="text-amber-600 focus:text-amber-700">Deactivate</DropdownMenuItem>
-                            <DropdownMenuItem 
-                              className="text-destructive focus:text-destructive flex items-center gap-2"
-                              onSelect={() => setMemberToDelete(member)}
-                            >
+                            <DropdownMenuItem asChild>
+                              <Link href={`/members/${member.id}/edit`} className="flex items-center gap-2">
+                                <Edit className="h-4 w-4" />
+                                Edit Profile
+                              </Link>
+                            </DropdownMenuItem>
+                            <DropdownMenuItem className="text-destructive focus:text-destructive flex items-center gap-2" onSelect={() => setMemberToDelete(member)}>
                               <Trash2 className="h-4 w-4" />
                               Delete Member
                             </DropdownMenuItem>
