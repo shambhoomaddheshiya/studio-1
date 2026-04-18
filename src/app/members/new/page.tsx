@@ -10,7 +10,8 @@ import {
   ArrowLeft, 
   UserPlus,
   ShieldCheck,
-  Loader2
+  Loader2,
+  Fingerprint
 } from "lucide-react";
 import Link from "next/link";
 import { useToast } from "@/hooks/use-toast";
@@ -33,12 +34,15 @@ export default function NewMemberPage() {
     const name = formData.get('name') as string;
     const mobile = formData.get('mobile') as string;
     const initialDeposit = Number(formData.get('deposit'));
-    const customId = formData.get('id') as string;
+    const customId = (formData.get('id') as string)?.trim();
 
-    const memberRef = doc(collection(db, "members"));
-    const memberId = customId || memberRef.id;
-    const finalRef = doc(db, "members", memberId);
-
+    // Determine the final document reference
+    const membersCollection = collection(db, "members");
+    const finalRef = customId 
+      ? doc(db, "members", customId) 
+      : doc(membersCollection);
+    
+    const memberId = finalRef.id;
     const timestamp = new Date().toISOString();
 
     setDocumentNonBlocking(finalRef, {
@@ -71,7 +75,7 @@ export default function NewMemberPage() {
 
     toast({
       title: "Member added",
-      description: `${name} has been successfully registered.`,
+      description: `${name} has been successfully registered with ID: ${memberId}.`,
     });
     router.push("/members");
   }
@@ -103,6 +107,15 @@ export default function NewMemberPage() {
             <form onSubmit={handleSubmit} className="space-y-6">
               <div className="grid gap-4">
                 <div className="grid gap-2">
+                  <Label htmlFor="id" className="flex items-center gap-2">
+                    <Fingerprint className="h-4 w-4 text-muted-foreground" />
+                    Member ID (Optional)
+                  </Label>
+                  <Input id="id" name="id" placeholder="e.g. FF-101 (Leave blank for auto-generated)" />
+                  <p className="text-[10px] text-muted-foreground">If provided, this will be the unique identifier for the member across the system.</p>
+                </div>
+
+                <div className="grid gap-2">
                   <Label htmlFor="name">Full Name</Label>
                   <Input id="name" name="name" placeholder="Enter full name" required />
                 </div>
@@ -113,10 +126,6 @@ export default function NewMemberPage() {
                 <div className="grid gap-2">
                   <Label htmlFor="deposit">Initial Deposit Amount (₹)</Label>
                   <Input id="deposit" name="deposit" type="number" placeholder="0" defaultValue="500" />
-                </div>
-                <div className="grid gap-2">
-                  <Label htmlFor="id">Custom ID (Optional)</Label>
-                  <Input id="id" name="id" placeholder="FF-XXX" />
                 </div>
               </div>
 

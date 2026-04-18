@@ -42,13 +42,25 @@ export default function MembersPage() {
   const { user, isUserLoading } = useUser();
   const { toast } = useToast();
   const [memberToDelete, setMemberToDelete] = useState<any | null>(null);
+  const [searchTerm, setSearchTerm] = useState("");
   
   const membersRef = useMemoFirebase(() => {
     if (!db || !user) return null;
     return collection(db, 'members');
   }, [db, user]);
 
-  const { data: members, isLoading } = useCollection(membersRef);
+  const { data: rawMembers, isLoading } = useCollection(membersRef);
+
+  const members = React.useMemo(() => {
+    if (!rawMembers) return [];
+    if (!searchTerm) return rawMembers;
+    const lowerSearch = searchTerm.toLowerCase();
+    return rawMembers.filter(m => 
+      m.name?.toLowerCase().includes(lowerSearch) || 
+      m.id?.toLowerCase().includes(lowerSearch) ||
+      m.mobileNumber?.includes(lowerSearch)
+    );
+  }, [rawMembers, searchTerm]);
 
   const handleDelete = () => {
     if (memberToDelete && db) {
@@ -92,7 +104,12 @@ export default function MembersPage() {
           <div className="p-4 border-b flex flex-col sm:flex-row gap-4 items-center justify-between bg-white">
             <div className="relative w-full sm:max-w-xs">
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-              <Input placeholder="Search members..." className="pl-10" />
+              <Input 
+                placeholder="Search name, ID or mobile..." 
+                className="pl-10" 
+                value={searchTerm}
+                onChange={(e) => setSearchTerm(e.target.value)}
+              />
             </div>
             <div className="flex items-center gap-2 w-full sm:w-auto">
               <Button variant="outline" size="sm" className="flex-1 sm:flex-none">
@@ -114,7 +131,7 @@ export default function MembersPage() {
               <Table>
                 <TableHeader>
                   <TableRow className="bg-muted/50">
-                    <TableHead className="w-[120px]">ID</TableHead>
+                    <TableHead>Member ID</TableHead>
                     <TableHead>Name</TableHead>
                     <TableHead>Contact</TableHead>
                     <TableHead>Status</TableHead>
@@ -123,9 +140,11 @@ export default function MembersPage() {
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {members?.map((member) => (
+                  {members.map((member) => (
                     <TableRow key={member.id} className="hover:bg-muted/30 transition-colors">
-                      <TableCell className="font-mono text-xs font-semibold">{member.id.substring(0, 8)}</TableCell>
+                      <TableCell className="font-mono text-xs font-bold text-primary">
+                        {member.id}
+                      </TableCell>
                       <TableCell className="font-medium">
                         <Link href={`/members/${member.id}`} className="hover:text-accent transition-colors">
                           {member.name}
@@ -165,10 +184,10 @@ export default function MembersPage() {
                       </TableCell>
                     </TableRow>
                   ))}
-                  {(!members || members.length === 0) && (
+                  {(members.length === 0) && (
                     <TableRow>
                       <TableCell colSpan={6} className="h-24 text-center text-muted-foreground">
-                        No members found. Add your first member to get started.
+                        {searchTerm ? "No members match your search." : "No members found. Add your first member to get started."}
                       </TableCell>
                     </TableRow>
                   )}
