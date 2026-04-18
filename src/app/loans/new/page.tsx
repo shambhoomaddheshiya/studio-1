@@ -1,3 +1,4 @@
+
 "use client"
 
 import React, { useState } from "react";
@@ -36,8 +37,12 @@ export default function NewLoanPage() {
   const membersRef = useMemoFirebase(() => collection(db, 'members'), [db]);
   const { data: members, isLoading: membersLoading } = useCollection(membersRef);
 
+  const loansRef = useMemoFirebase(() => collection(db, 'loans'), [db]);
+  const { data: allLoans, isLoading: loansLoading } = useCollection(loansRef);
+
   function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
+    if (loansLoading) return;
     setIsSubmitting(true);
 
     const formData = new FormData(e.currentTarget);
@@ -53,10 +58,22 @@ export default function NewLoanPage() {
     const timestamp = new Date().toISOString();
     const loanDate = date ? new Date(date).toISOString() : timestamp;
 
-    // 1. Create Loan Record
-    const loanRef = doc(collection(db, "loans"));
+    // Generate numeric incrementing ID starting from 001
+    let nextId = "001";
+    if (allLoans && allLoans.length > 0) {
+      const numericIds = allLoans
+        .map(l => parseInt(l.id))
+        .filter(id => !isNaN(id));
+      if (numericIds.length > 0) {
+        const maxId = Math.max(...numericIds);
+        nextId = (maxId + 1).toString().padStart(3, '0');
+      }
+    }
+
+    // 1. Create Loan Record with generated ID
+    const loanRef = doc(db, "loans", nextId);
     setDocumentNonBlocking(loanRef, {
-      id: loanRef.id,
+      id: nextId,
       memberId,
       loanAmount: amount,
       interestRate: interest / 100, // Monthly decimal
@@ -80,14 +97,16 @@ export default function NewLoanPage() {
       memberName,
       fundCategory: 'PrincipalFund',
       balanceImpact: 'Debit',
-      comment: `Loan disbursed: ${comment}`,
+      comment: `Loan [${nextId}] disbursed: ${comment}`,
+      relatedEntityId: nextId,
+      relatedEntityType: 'Loan',
       createdAt: timestamp,
       updatedAt: timestamp,
     }, { merge: true });
 
     toast({
       title: "Loan issued",
-      description: `₹${amount} has been disbursed to ${memberName}.`,
+      description: `Loan ${nextId} for ₹${amount} has been disbursed to ${memberName}.`,
     });
     router.push("/transactions");
   }
@@ -161,6 +180,7 @@ export default function NewLoanPage() {
                 <div className="text-sm text-blue-900">
                   <p className="font-semibold">Important Notes:</p>
                   <ul className="list-disc ml-4 mt-1 space-y-1">
+                    <li>A unique Loan ID will be generated automatically.</li>
                     <li>Interest will be calculated from the next billing cycle.</li>
                     <li>Ensure group approval before disbursing larger amounts.</li>
                   </ul>
@@ -168,10 +188,10 @@ export default function NewLoanPage() {
               </div>
 
               <div className="flex justify-end gap-3">
-                <Button variant="outline" type="button" asChild disabled={isSubmitting}>
+                <Button variant="outline" type="button" asChild disabled={isSubmitting || loansLoading}>
                   <Link href="/">Cancel</Link>
                 </Button>
-                <Button type="submit" className="bg-primary hover:bg-primary/90" disabled={isSubmitting}>
+                <Button type="submit" className="bg-primary hover:bg-primary/90" disabled={isSubmitting || loansLoading}>
                   {isSubmitting ? <><Loader2 className="mr-2 h-4 w-4 animate-spin" /> Processing...</> : 'Approve & Disburse'}
                 </Button>
               </div>
