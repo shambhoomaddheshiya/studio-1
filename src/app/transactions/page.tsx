@@ -104,6 +104,8 @@ export default function TransactionsPage() {
       title: "Transaction updated",
       description: "Changes have been saved successfully.",
     });
+    
+    // Reset state to close dialog
     setTxToEdit(null);
     setIsUpdating(false);
   };
@@ -218,13 +220,22 @@ export default function TransactionsPage() {
                             </Button>
                           </DropdownMenuTrigger>
                           <DropdownMenuContent align="end">
-                            <DropdownMenuItem onSelect={() => setTxToEdit(tx)} className="flex items-center gap-2">
+                            <DropdownMenuItem 
+                              onSelect={() => {
+                                // Small delay ensures dropdown closes before dialog opens
+                                setTimeout(() => setTxToEdit(tx), 0);
+                              }} 
+                              className="flex items-center gap-2"
+                            >
                               <Edit className="h-4 w-4" />
                               Edit Entry
                             </DropdownMenuItem>
                             <DropdownMenuItem 
                               className="text-destructive focus:text-destructive flex items-center gap-2" 
-                              onSelect={() => setTxToDelete(tx)}
+                              onSelect={() => {
+                                // Small delay ensures dropdown closes before dialog opens
+                                setTimeout(() => setTxToDelete(tx), 0);
+                              }}
                             >
                               <Trash2 className="h-4 w-4" />
                               Delete Entry
@@ -249,7 +260,12 @@ export default function TransactionsPage() {
       </main>
 
       {/* Delete Confirmation */}
-      <AlertDialog open={!!txToDelete} onOpenChange={(open) => !open && setTxToDelete(null)}>
+      <AlertDialog 
+        open={!!txToDelete} 
+        onOpenChange={(open) => {
+          if (!open) setTxToDelete(null);
+        }}
+      >
         <AlertDialogContent>
           <AlertDialogHeader>
             <AlertDialogTitle>Are you absolutely sure?</AlertDialogTitle>
@@ -271,7 +287,12 @@ export default function TransactionsPage() {
       </AlertDialog>
 
       {/* Edit Dialog */}
-      <Dialog open={!!txToEdit} onOpenChange={(open) => !open && setTxToEdit(null)}>
+      <Dialog 
+        open={!!txToEdit} 
+        onOpenChange={(open) => {
+          if (!open) setTxToEdit(null);
+        }}
+      >
         <DialogContent className="sm:max-w-[425px]">
           <DialogHeader>
             <DialogTitle>Edit Transaction</DialogTitle>
