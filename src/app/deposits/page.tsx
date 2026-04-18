@@ -1,5 +1,6 @@
 "use client"
 
+import React, { useState } from "react";
 import { Navbar } from "@/components/layout/Navbar";
 import { 
   Table, 
@@ -11,15 +12,57 @@ import {
 } from "@/components/ui/table";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { Plus, Loader2, Calendar } from "lucide-react";
+import { 
+  Plus, 
+  Loader2, 
+  Calendar, 
+  MoreHorizontal, 
+  Edit, 
+  Trash2, 
+  IndianRupee, 
+  FileText 
+} from "lucide-react";
 import Link from "next/link";
 import { Card } from "@/components/ui/card";
 import { useFirestore, useCollection, useMemoFirebase, useUser } from "@/firebase";
-import { collection, query, orderBy } from "firebase/firestore";
+import { collection, query, orderBy, doc } from "firebase/firestore";
+import { 
+  DropdownMenu, 
+  DropdownMenuContent, 
+  DropdownMenuItem, 
+  DropdownMenuTrigger 
+} from "@/components/ui/dropdown-menu";
+import { 
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import { Label } from "@/components/ui/label";
+import { Input } from "@/components/ui/input";
+import { Textarea } from "@/components/ui/textarea";
+import { deleteDocumentNonBlocking, updateDocumentNonBlocking } from "@/firebase/non-blocking-updates";
+import { useToast } from "@/hooks/use-toast";
 
 export default function DepositsPage() {
   const db = useFirestore();
+  const { toast } = useToast();
   const { user, isUserLoading } = useUser();
+  const [depositToDelete, setDepositToDelete] = useState<any | null>(null);
+  const [depositToEdit, setDepositToEdit] = useState<any | null>(null);
+  const [isUpdating, setIsUpdating] = useState(false);
   
   const depositsRef = useMemoFirebase(() => {
     if (!db || !user) return null;
@@ -33,6 +76,45 @@ export default function DepositsPage() {
     return collection(db, 'members');
   }, [db, user]);
   const { data: members } = useCollection(membersRef);
+
+  const handleDelete = () => {
+    if (depositToDelete && db) {
+      const docRef = doc(db, 'depositEntries', depositToDelete.id);
+      deleteDocumentNonBlocking(docRef);
+      toast({
+        title: "Deposit deleted",
+        description: "The deposit record has been removed.",
+      });
+      setDepositToDelete(null);
+    }
+  };
+
+  const handleEditSubmit = (e: React.FormEvent<HTMLFormElement>) => {
+    e.preventDefault();
+    if (!depositToEdit || !db) return;
+    setIsUpdating(true);
+
+    const formData = new FormData(e.currentTarget);
+    const amount = Number(formData.get('amount'));
+    const date = formData.get('date') as string;
+    const comment = formData.get('comment') as string;
+
+    const docRef = doc(db, 'depositEntries', depositToEdit.id);
+    updateDocumentNonBlocking(docRef, {
+      paidAmount: amount,
+      paymentDate: new Date(date).toISOString(),
+      comment,
+      updatedAt: new Date().toISOString()
+    });
+
+    toast({
+      title: "Deposit updated",
+      description: "The deposit entry has been saved successfully.",
+    });
+    
+    setDepositToEdit(null);
+    setIsUpdating(false);
+  };
 
   if (isUserLoading) {
     return (
@@ -75,6 +157,7 @@ export default function DepositsPage() {
                     <TableHead>Period</TableHead>
                     <TableHead>Status</TableHead>
                     <TableHead className="text-right">Amount</TableHead>
+                    <TableHead className="w-[80px]"></TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
@@ -102,12 +185,41 @@ export default function DepositsPage() {
                         <TableCell className="text-right font-bold text-primary">
                           ₹{deposit.paidAmount.toLocaleString()}
                         </TableCell>
+                        <TableCell className="text-right">
+                          <DropdownMenu>
+                            <DropdownMenuTrigger asChild>
+                              <Button variant="ghost" size="icon">
+                                <MoreHorizontal className="h-4 w-4" />
+                              </Button>
+                            </DropdownMenuTrigger>
+                            <DropdownMenuContent align="end">
+                              <DropdownMenuItem 
+                                onSelect={() => {
+                                  setTimeout(() => setDepositToEdit(deposit), 0);
+                                }} 
+                                className="flex items-center gap-2"
+                              >
+                                <Edit className="h-4 w-4" />
+                                Edit Entry
+                              </DropdownMenuItem>
+                              <DropdownMenuItem 
+                                className="text-destructive focus:text-destructive flex items-center gap-2" 
+                                onSelect={() => {
+                                  setTimeout(() => setDepositToDelete(deposit), 0);
+                                }}
+                              >
+                                <Trash2 className="h-4 w-4" />
+                                Delete Entry
+                              </DropdownMenuItem>
+                            </DropdownMenuContent>
+                          </DropdownMenu>
+                        </TableCell>
                       </TableRow>
                     );
                   })}
                   {(!deposits || deposits.length === 0) && !isLoading && (
                     <TableRow>
-                      <TableCell colSpan={5} className="h-24 text-center text-muted-foreground">
+                      <TableCell colSpan={6} className="h-24 text-center text-muted-foreground">
                         No deposits recorded yet.
                       </TableCell>
                     </TableRow>
@@ -118,6 +230,88 @@ export default function DepositsPage() {
           </div>
         </Card>
       </main>
+
+      <AlertDialog 
+        open={!!depositToDelete} 
+        onOpenChange={(open) => {
+          if (!open) setDepositToDelete(null);
+        }}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Are you absolutely sure?</AlertDialogTitle>
+            <AlertDialogDescription>
+              This action cannot be undone. This will permanently delete the deposit record of 
+              <strong> ₹{depositToDelete?.paidAmount?.toLocaleString()}</strong>.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction 
+              onClick={handleDelete}
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+            >
+              Delete
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      <Dialog 
+        open={!!depositToEdit} 
+        onOpenChange={(open) => {
+          if (!open) setDepositToEdit(null);
+        }}
+      >
+        <DialogContent className="sm:max-w-[425px]">
+          <DialogHeader>
+            <DialogTitle>Edit Deposit Entry</DialogTitle>
+            <DialogDescription>
+              Modify the details for this monthly contribution.
+            </DialogDescription>
+          </DialogHeader>
+          {depositToEdit && (
+            <form onSubmit={handleEditSubmit} className="space-y-4 py-4">
+              <div className="grid gap-2">
+                <Label htmlFor="amount" className="flex items-center gap-2">
+                  <IndianRupee className="h-4 w-4" />
+                  Amount (₹)
+                </Label>
+                <Input id="amount" name="amount" type="number" defaultValue={depositToEdit.paidAmount} required />
+              </div>
+              <div className="grid gap-2">
+                <Label htmlFor="date" className="flex items-center gap-2">
+                  <Calendar className="h-4 w-4" />
+                  Payment Date
+                </Label>
+                <Input 
+                  id="date" 
+                  name="date" 
+                  type="date" 
+                  defaultValue={depositToEdit.paymentDate ? new Date(depositToEdit.paymentDate).toISOString().split('T')[0] : ''} 
+                  required 
+                />
+              </div>
+              <div className="grid gap-2">
+                <Label htmlFor="comment" className="flex items-center gap-2">
+                  <FileText className="h-4 w-4" />
+                  Comment
+                </Label>
+                <Textarea id="comment" name="comment" defaultValue={depositToEdit.comment} />
+              </div>
+              <DialogFooter>
+                <Button type="button" variant="outline" onClick={() => setDepositToEdit(null)} disabled={isUpdating}>
+                  Cancel
+                </Button>
+                <Button type="submit" disabled={isUpdating}>
+                  {isUpdating ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : null}
+                  Save Changes
+                </Button>
+              </DialogFooter>
+            </form>
+          )}
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
