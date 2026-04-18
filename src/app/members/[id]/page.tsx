@@ -1,4 +1,3 @@
-
 "use client"
 
 import React, { useState, useEffect } from "react";
@@ -27,13 +26,14 @@ import { useFirestore, useDoc, useCollection, useMemoFirebase, useUser } from "@
 import { doc, collection, query, where, orderBy } from "firebase/firestore";
 
 export default function MemberDetails() {
-  const { id } = useParams();
+  const params = useParams();
+  const id = params?.id as string;
   const db = useFirestore();
   const { user } = useUser();
   
   const memberRef = useMemoFirebase(() => {
     if (!db || !id) return null;
-    return doc(db, 'members', id as string);
+    return doc(db, 'members', id);
   }, [db, id]);
 
   const { data: member, isLoading: memberLoading } = useDoc(memberRef);
@@ -69,7 +69,7 @@ export default function MemberDetails() {
       if (tx.transactionType === 'InterestPayment') acc.totalInterestPaid += amount;
       if (tx.transactionType === 'FinePayment') acc.totalFinePaid += amount;
       
-      // Calculate outstanding roughly: Disbursements - Principal Repayments
+      // Calculate outstanding roughly
       if (tx.transactionType === 'LoanDisbursement') acc.currentOutstandingLoan += amount;
       if (tx.transactionType === 'PrincipalRepayment') acc.currentOutstandingLoan -= amount;
       
@@ -89,7 +89,7 @@ export default function MemberDetails() {
       setLoadingAi(true);
       try {
         const result = await explainCreditScore({
-          memberId: id as string,
+          memberId: id,
           creditScore: member.creditRating || 7,
           totalDeposit: stats.totalDeposit,
           totalLoanTaken: stats.totalLoanTaken,
@@ -155,7 +155,6 @@ export default function MemberDetails() {
         </header>
 
         <div className="grid gap-6 lg:grid-cols-4">
-          {/* Stats Column */}
           <div className="lg:col-span-1 space-y-6">
             <Card className="border-none shadow-sm overflow-hidden">
               <CardHeader className="bg-primary text-primary-foreground">
@@ -201,7 +200,6 @@ export default function MemberDetails() {
             </Card>
           </div>
 
-          {/* Passbook / History Column */}
           <div className="lg:col-span-3 space-y-6">
             <Card className="border-none shadow-sm">
               <CardHeader className="flex flex-row items-center justify-between">
@@ -246,10 +244,6 @@ export default function MemberDetails() {
                   <History className="h-5 w-5 text-primary" />
                   <CardTitle className="text-lg">Member Passbook</CardTitle>
                 </div>
-                <Button variant="outline" size="sm" className="bg-white">
-                  <Calendar className="h-4 w-4 mr-2" />
-                  Filter
-                </Button>
               </CardHeader>
               <div className="relative min-h-[200px]">
                 {txLoading ? (

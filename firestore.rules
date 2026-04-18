@@ -3,10 +3,10 @@ service cloud.firestore {
   match /databases/{database}/documents {
 
     /**
-     * FINANCE GROUP MANAGEMENT SYSTEM - SECURITY RULES (PROTOTYPE VERSION)
+     * FINANCE GROUP MANAGEMENT SYSTEM - SECURITY RULES
      * 
-     * In this prototype phase, we allow any signed-in user to view and manage 
-     * all records to facilitate testing and development.
+     * TRIGGER DEPLOYMENT: Ensuring all authenticated users (including anonymous ones)
+     * have full access to the database for this prototype phase.
      */
 
     function isSignedIn() {
