@@ -1,4 +1,3 @@
-
 "use client"
 
 import React, { useState, useEffect } from "react";
@@ -40,6 +39,7 @@ export default function MemberDetails() {
 
   const transactionsRef = useMemoFirebase(() => {
     if (!db || !id || !user) return null;
+    // Query transactions for this specific member, ordered by date
     return query(
       collection(db, 'transactions'),
       where('memberId', '==', id),
@@ -85,7 +85,7 @@ export default function MemberDetails() {
 
   useEffect(() => {
     async function getAiInsight() {
-      if (!member || !id) return;
+      if (!member || !id || !transactions) return;
       setLoadingAi(true);
       try {
         const result = await explainCreditScore({
@@ -101,17 +101,17 @@ export default function MemberDetails() {
         });
         setAiInsight(result);
       } catch (err) {
-        // Silently fail AI insight
+        console.error("AI Insight failed", err);
       } finally {
         setLoadingAi(false);
       }
     }
-    if (member && transactions) {
+    if (member && transactions && transactions.length > 0) {
       getAiInsight();
     }
   }, [member, transactions, id, stats]);
 
-  if (isUserLoading || memberLoading) {
+  if (isUserLoading) {
     return (
       <div className="min-h-screen flex items-center justify-center">
         <Loader2 className="h-8 w-8 animate-spin text-primary" />
@@ -119,7 +119,7 @@ export default function MemberDetails() {
     );
   }
 
-  if (!member) {
+  if (!member && !memberLoading) {
     return (
       <div className="min-h-screen flex flex-col">
         <Navbar />
@@ -145,12 +145,16 @@ export default function MemberDetails() {
           </Button>
           <div>
             <div className="flex items-center gap-3">
-              <h1 className="text-3xl font-bold tracking-tight text-primary font-headline">{member.name}</h1>
-              <Badge variant={member.status === 'Active' ? 'default' : 'secondary'} className={member.status === 'Active' ? 'bg-green-100 text-green-700 hover:bg-green-100 border-none' : ''}>
-                {member.status}
-              </Badge>
+              {memberLoading ? <Skeleton className="h-8 w-48" /> : (
+                <>
+                  <h1 className="text-3xl font-bold tracking-tight text-primary font-headline">{member?.name}</h1>
+                  <Badge variant={member?.status === 'Active' ? 'default' : 'secondary'} className={member?.status === 'Active' ? 'bg-green-100 text-green-700 hover:bg-green-100 border-none' : ''}>
+                    {member?.status}
+                  </Badge>
+                </>
+              )}
             </div>
-            <p className="text-muted-foreground font-mono text-sm">{id} • {member.mobileNumber}</p>
+            <p className="text-muted-foreground font-mono text-sm">{id}</p>
           </div>
         </header>
 
@@ -166,7 +170,7 @@ export default function MemberDetails() {
               <CardContent className="pt-6">
                 <div className="flex flex-col items-center text-center">
                   <div className="relative flex items-center justify-center w-24 h-24 rounded-full border-4 border-accent/20">
-                    <span className="text-3xl font-bold text-primary">{member.creditRating || 7}</span>
+                    <span className="text-3xl font-bold text-primary">{member?.creditRating || 7}</span>
                   </div>
                   <p className="mt-2 text-sm text-muted-foreground">Group Credit Rating</p>
                 </div>
@@ -233,7 +237,7 @@ export default function MemberDetails() {
                     </div>
                   </div>
                 ) : (
-                  <p className="text-sm text-muted-foreground">Record some transactions to generate AI insights.</p>
+                  <p className="text-sm text-muted-foreground">Record more transactions to generate AI financial insights.</p>
                 )}
               </CardContent>
             </Card>
@@ -268,7 +272,7 @@ export default function MemberDetails() {
                           </TableCell>
                           <TableCell>
                             <Badge variant="outline" className="capitalize text-[10px]">
-                              {tx.transactionType.replace(/([A-Z])/g, ' $1').trim()}
+                              {(tx.transactionType || '').replace(/([A-Z])/g, ' $1').trim()}
                             </Badge>
                           </TableCell>
                           <TableCell className="text-sm italic text-muted-foreground max-w-[200px] truncate">
@@ -278,7 +282,7 @@ export default function MemberDetails() {
                             "text-right font-bold",
                             tx.balanceImpact === 'Debit' ? 'text-destructive' : 'text-primary'
                           )}>
-                            {tx.balanceImpact === 'Debit' ? '-' : '+'}₹{tx.amount.toLocaleString()}
+                            {tx.balanceImpact === 'Debit' ? '-' : '+'}₹{(tx.amount || 0).toLocaleString()}
                           </TableCell>
                         </TableRow>
                       ))}
