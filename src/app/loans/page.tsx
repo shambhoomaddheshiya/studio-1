@@ -146,6 +146,7 @@ export default function LoansPage() {
               <Table>
                 <TableHeader>
                   <TableRow className="bg-muted/50">
+                    <TableHead>Loan ID</TableHead>
                     <TableHead>Disbursement Date</TableHead>
                     <TableHead>Recipient</TableHead>
                     <TableHead>Principal</TableHead>
@@ -159,6 +160,9 @@ export default function LoansPage() {
                     const member = members?.find(m => m.id === loan.memberId);
                     return (
                       <TableRow key={loan.id} className="hover:bg-muted/30 transition-colors">
+                        <TableCell className="font-mono text-xs font-bold text-primary">
+                          {loan.id}
+                        </TableCell>
                         <TableCell className="text-sm">
                           {new Date(loan.loanDate).toLocaleDateString()}
                         </TableCell>
@@ -209,7 +213,7 @@ export default function LoansPage() {
                   })}
                   {(!loans || loans.length === 0) && !isLoading && (
                     <TableRow>
-                      <TableCell colSpan={6} className="h-24 text-center text-muted-foreground">
+                      <TableCell colSpan={7} className="h-24 text-center text-muted-foreground">
                         No loans issued yet.
                       </TableCell>
                     </TableRow>
@@ -231,8 +235,8 @@ export default function LoansPage() {
           <AlertDialogHeader>
             <AlertDialogTitle>Are you absolutely sure?</AlertDialogTitle>
             <AlertDialogDescription>
-              This action cannot be undone. This will permanently delete the loan record of 
-              <strong> ₹{loanToDelete?.loanAmount?.toLocaleString()}</strong>.
+              This action cannot be undone. This will permanently delete the loan record 
+              <strong> [{loanToDelete?.id}]</strong> of <strong> ₹{loanToDelete?.loanAmount?.toLocaleString()}</strong>.
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
@@ -257,7 +261,7 @@ export default function LoansPage() {
           <DialogHeader>
             <DialogTitle>Edit Loan Details</DialogTitle>
             <DialogDescription>
-              Modify the terms or details for this loan.
+              Modify the terms or details for loan <strong>{loanToEdit?.id}</strong>.
             </DialogDescription>
           </DialogHeader>
           {loanToEdit && (
