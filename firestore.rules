@@ -1,23 +1,11 @@
-
 rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
-
-    /**
-     * FINANCE GROUP MANAGEMENT SYSTEM - SECURITY RULES
-     * 
-     * RE-DEPLOYMENT TRIGGER: Updating rules to explicitly allow authenticated access 
-     * for the prototype. Timestamp: 2024-05-24T12:00:00Z
-     */
-
-    function isSignedIn() {
-      return request.auth != null;
-    }
-
-    // Relaxed rules for the prototype to allow full access to all authenticated users
-    // This includes users signed in anonymously.
+    // Allow authenticated users to read and write to all collections.
+    // This supports all features like Member Directory, Loans, and Transactions.
+    // Deployment trigger: 2024-03-20-v2
     match /{document=**} {
-      allow read, write: if isSignedIn();
+      allow read, write: if request.auth != null;
     }
   }
 }

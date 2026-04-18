@@ -52,11 +52,11 @@ export default function Dashboard() {
 
   // Basic dynamic stats
   const totalFunds = allTransactions?.reduce((acc, tx) => {
-    return tx.balanceImpact === 'Credit' ? acc + tx.amount : acc - tx.amount;
+    return tx.balanceImpact === 'Credit' ? acc + (tx.amount || 0) : acc - (tx.amount || 0);
   }, 0) || 0;
   
   const totalInterest = allTransactions?.filter(tx => tx.transactionType === 'InterestPayment')
-    .reduce((acc, tx) => acc + tx.amount, 0) || 0;
+    .reduce((acc, tx) => acc + (tx.amount || 0), 0) || 0;
 
   return (
     <div className="min-h-screen flex flex-col">
@@ -126,7 +126,9 @@ export default function Dashboard() {
                         </div>
                         <div>
                           <p className="text-sm font-medium">{tx.memberName}</p>
-                          <p className="text-xs text-muted-foreground capitalize">{tx.transactionType.replace(/([A-Z])/g, ' $1').trim()} • {new Date(tx.transactionDate).toLocaleDateString()}</p>
+                          <p className="text-xs text-muted-foreground capitalize">
+                            {(tx.transactionType || '').replace(/([A-Z])/g, ' $1').trim()} • {tx.transactionDate ? new Date(tx.transactionDate).toLocaleDateString() : 'N/A'}
+                          </p>
                         </div>
                       </div>
                       <div className="text-right">
@@ -134,7 +136,7 @@ export default function Dashboard() {
                           "text-sm font-bold",
                           tx.balanceImpact === 'Debit' ? 'text-destructive' : 'text-primary'
                         )}>
-                          {tx.balanceImpact === 'Debit' ? '-' : '+'}₹{tx.amount.toLocaleString()}
+                          {tx.balanceImpact === 'Debit' ? '-' : '+'}₹{(tx.amount || 0).toLocaleString()}
                         </p>
                       </div>
                     </div>
