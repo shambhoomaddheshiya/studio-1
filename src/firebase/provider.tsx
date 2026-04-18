@@ -4,7 +4,8 @@ import React, { DependencyList, createContext, useContext, ReactNode, useMemo, u
 import { FirebaseApp } from 'firebase/app';
 import { Firestore } from 'firebase/firestore';
 import { Auth, User, onAuthStateChanged, signInAnonymously } from 'firebase/auth';
-import { FirebaseErrorListener } from '@/components/FirebaseErrorListener'
+import { FirebaseErrorListener } from '@/components/FirebaseErrorListener';
+import { Loader2 } from 'lucide-react';
 
 interface FirebaseProviderProps {
   children: ReactNode;
@@ -68,7 +69,7 @@ export const FirebaseProvider: React.FC<FirebaseProviderProps> = ({
       auth,
       (firebaseUser) => {
         if (firebaseUser) {
-          // Successfully authenticated (either via existing session or new anonymous sign-in)
+          // Successfully authenticated
           setUserAuthState({ 
             user: firebaseUser, 
             isUserLoading: false, 
@@ -76,7 +77,6 @@ export const FirebaseProvider: React.FC<FirebaseProviderProps> = ({
           });
         } else {
           // No user session found, initiate anonymous sign-in
-          // We keep isUserLoading as true so components don't fetch data yet
           signInAnonymously(auth).catch((error) => {
             console.error("Anonymous sign-in failed:", error);
             setUserAuthState({ 
@@ -113,10 +113,17 @@ export const FirebaseProvider: React.FC<FirebaseProviderProps> = ({
     };
   }, [firebaseApp, firestore, auth, userAuthState]);
 
-  // CRITICAL: Prevent rendering children until the initial auth check is complete AND a user is present.
-  // This ensures that any queries created by children will have a valid auth token.
-  if (userAuthState.isUserLoading) {
-    return null; 
+  // CRITICAL: Prevent rendering children until initial auth is resolved AND a user is present.
+  // This ensures that all components wait for a valid token before making queries.
+  if (userAuthState.isUserLoading || !userAuthState.user) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-background">
+        <div className="flex flex-col items-center gap-4">
+          <Loader2 className="h-8 w-8 animate-spin text-primary" />
+          <p className="text-sm text-muted-foreground animate-pulse font-medium">Authenticating session...</p>
+        </div>
+      </div>
+    );
   }
 
   return (

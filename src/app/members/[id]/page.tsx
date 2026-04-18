@@ -3,7 +3,7 @@
 import React, { useState, useEffect } from "react";
 import { Navbar } from "@/components/layout/Navbar";
 import { useParams } from "next/navigation";
-import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { 
@@ -22,7 +22,7 @@ import { explainCreditScore, AiCreditScoreExplanationOutput } from "@/ai/flows/a
 import { Skeleton } from "@/components/ui/skeleton";
 import { cn } from "@/lib/utils";
 import { useFirestore, useDoc, useCollection, useMemoFirebase, useUser } from "@/firebase";
-import { doc, collection, query, where, orderBy } from "firebase/firestore";
+import { doc, collection, query, where } from "firebase/firestore";
 
 export default function MemberDetails() {
   const params = useParams();
@@ -39,16 +39,26 @@ export default function MemberDetails() {
 
   const transactionsRef = useMemoFirebase(() => {
     if (!db || !id || !user) return null;
-    // Query transactions for this specific member, ordered by date
+    // Query transactions for this specific member. 
+    // Removed orderBy to ensure it works without composite indexes for now.
     return query(
       collection(db, 'transactions'),
-      where('memberId', '==', id),
-      orderBy('transactionDate', 'desc')
+      where('memberId', '==', id)
     );
   }, [db, id, user]);
 
-  const { data: transactions, isLoading: txLoading } = useCollection(transactionsRef);
+  const { data: rawTransactions, isLoading: txLoading } = useCollection(transactionsRef);
   
+  // Sort transactions manually in client-side to ensure descending order by date
+  const transactions = React.useMemo(() => {
+    if (!rawTransactions) return null;
+    return [...rawTransactions].sort((a, b) => {
+      const dateA = new Date(a.transactionDate || 0).getTime();
+      const dateB = new Date(b.transactionDate || 0).getTime();
+      return dateB - dateA;
+    });
+  }, [rawTransactions]);
+
   const [aiInsight, setAiInsight] = useState<AiCreditScoreExplanationOutput | null>(null);
   const [loadingAi, setLoadingAi] = useState(false);
 
@@ -69,7 +79,6 @@ export default function MemberDetails() {
       if (tx.transactionType === 'InterestPayment') acc.totalInterestPaid += amount;
       if (tx.transactionType === 'FinePayment') acc.totalFinePaid += amount;
       
-      // Calculate outstanding roughly
       if (tx.transactionType === 'LoanDisbursement') acc.currentOutstandingLoan += amount;
       if (tx.transactionType === 'PrincipalRepayment') acc.currentOutstandingLoan -= amount;
       
@@ -85,7 +94,7 @@ export default function MemberDetails() {
 
   useEffect(() => {
     async function getAiInsight() {
-      if (!member || !id || !transactions) return;
+      if (!member || !id || !transactions || transactions.length === 0) return;
       setLoadingAi(true);
       try {
         const result = await explainCreditScore({
