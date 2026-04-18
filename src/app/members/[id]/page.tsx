@@ -1,8 +1,8 @@
+
 "use client"
 
 import React, { useState, useEffect } from "react";
 import { Navbar } from "@/components/layout/Navbar";
-import { MOCK_MEMBERS, MOCK_TRANSACTIONS } from "@/lib/mock-data";
 import { useParams } from "next/navigation";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -15,46 +15,124 @@ import {
   ShieldCheck, 
   Sparkles,
   Info,
-  Calendar
+  Calendar,
+  Loader2
 } from "lucide-react";
 import Link from "next/link";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { explainCreditScore, AiCreditScoreExplanationOutput } from "@/ai/flows/ai-credit-score-explanation";
 import { Skeleton } from "@/components/ui/skeleton";
 import { cn } from "@/lib/utils";
+import { useFirestore, useDoc, useCollection, useMemoFirebase, useUser } from "@/firebase";
+import { doc, collection, query, where, orderBy } from "firebase/firestore";
 
 export default function MemberDetails() {
   const { id } = useParams();
-  const member = MOCK_MEMBERS.find(m => m.id === id) || MOCK_MEMBERS[0];
-  const transactions = MOCK_TRANSACTIONS.filter(t => t.memberId === member.id);
+  const db = useFirestore();
+  const { user } = useUser();
+  
+  const memberRef = useMemoFirebase(() => {
+    if (!db || !id) return null;
+    return doc(db, 'members', id as string);
+  }, [db, id]);
+
+  const { data: member, isLoading: memberLoading } = useDoc(memberRef);
+
+  const transactionsRef = useMemoFirebase(() => {
+    if (!db || !id) return null;
+    return query(
+      collection(db, 'transactions'),
+      where('memberId', '==', id),
+      orderBy('transactionDate', 'desc')
+    );
+  }, [db, id]);
+
+  const { data: transactions, isLoading: txLoading } = useCollection(transactionsRef);
   
   const [aiInsight, setAiInsight] = useState<AiCreditScoreExplanationOutput | null>(null);
   const [loadingAi, setLoadingAi] = useState(false);
 
+  // Calculate statistics from live transactions
+  const stats = React.useMemo(() => {
+    if (!transactions) return {
+      totalDeposit: 0,
+      totalLoanTaken: 0,
+      totalInterestPaid: 0,
+      totalFinePaid: 0,
+      currentOutstandingLoan: 0
+    };
+
+    return transactions.reduce((acc, tx) => {
+      const amount = tx.amount || 0;
+      if (tx.transactionType === 'Deposit') acc.totalDeposit += amount;
+      if (tx.transactionType === 'LoanDisbursement') acc.totalLoanTaken += amount;
+      if (tx.transactionType === 'InterestPayment') acc.totalInterestPaid += amount;
+      if (tx.transactionType === 'FinePayment') acc.totalFinePaid += amount;
+      
+      // Calculate outstanding roughly: Disbursements - Principal Repayments
+      if (tx.transactionType === 'LoanDisbursement') acc.currentOutstandingLoan += amount;
+      if (tx.transactionType === 'PrincipalRepayment') acc.currentOutstandingLoan -= amount;
+      
+      return acc;
+    }, {
+      totalDeposit: 0,
+      totalLoanTaken: 0,
+      totalInterestPaid: 0,
+      totalFinePaid: 0,
+      currentOutstandingLoan: 0
+    });
+  }, [transactions]);
+
   useEffect(() => {
     async function getAiInsight() {
+      if (!member || !id) return;
       setLoadingAi(true);
       try {
         const result = await explainCreditScore({
-          memberId: member.id,
-          creditScore: member.creditScore as any,
-          totalDeposit: member.totalDeposit,
-          totalLoanTaken: member.totalLoanTaken,
-          totalInterestPaid: member.totalInterestPaid,
-          totalFinePaid: member.totalFinePaid,
-          currentOutstandingLoan: member.currentOutstandingLoan,
-          missedPaymentsCount: 1, // Mock
-          loanRepaymentEfficiency: 'good'
+          memberId: id as string,
+          creditScore: member.creditRating || 7,
+          totalDeposit: stats.totalDeposit,
+          totalLoanTaken: stats.totalLoanTaken,
+          totalInterestPaid: stats.totalInterestPaid,
+          totalFinePaid: stats.totalFinePaid,
+          currentOutstandingLoan: stats.currentOutstandingLoan,
+          missedPaymentsCount: 0,
+          loanRepaymentEfficiency: 'average'
         });
         setAiInsight(result);
       } catch (err) {
-        console.error("AI Insight failed", err);
+        // Silently fail AI insight
       } finally {
         setLoadingAi(false);
       }
     }
-    getAiInsight();
-  }, [member]);
+    if (member && transactions) {
+      getAiInsight();
+    }
+  }, [member, transactions, id, stats]);
+
+  if (memberLoading) {
+    return (
+      <div className="min-h-screen flex items-center justify-center">
+        <Loader2 className="h-8 w-8 animate-spin text-primary" />
+      </div>
+    );
+  }
+
+  if (!member) {
+    return (
+      <div className="min-h-screen flex flex-col">
+        <Navbar />
+        <main className="flex-1 flex flex-col items-center justify-center p-8 text-center">
+          <h2 className="text-2xl font-bold">Member Not Found</h2>
+          <p className="text-muted-foreground mt-2">The member record you are looking for does not exist.</p>
+          <Button className="mt-4" asChild>
+            <Link href="/members">Back to Directory</Link>
+          </Button>
+        </main>
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen flex flex-col">
@@ -68,9 +146,11 @@ export default function MemberDetails() {
           <div>
             <div className="flex items-center gap-3">
               <h1 className="text-3xl font-bold tracking-tight text-primary font-headline">{member.name}</h1>
-              <Badge className="bg-green-100 text-green-700 border-none">{member.status}</Badge>
+              <Badge variant={member.status === 'Active' ? 'default' : 'secondary'} className={member.status === 'Active' ? 'bg-green-100 text-green-700 hover:bg-green-100 border-none' : ''}>
+                {member.status}
+              </Badge>
             </div>
-            <p className="text-muted-foreground font-mono text-sm">{member.id} • {member.mobile}</p>
+            <p className="text-muted-foreground font-mono text-sm">{id} • {member.mobileNumber}</p>
           </div>
         </header>
 
@@ -87,10 +167,9 @@ export default function MemberDetails() {
               <CardContent className="pt-6">
                 <div className="flex flex-col items-center text-center">
                   <div className="relative flex items-center justify-center w-24 h-24 rounded-full border-4 border-accent/20">
-                    <span className="text-3xl font-bold text-primary">{member.creditScore}</span>
+                    <span className="text-3xl font-bold text-primary">{member.creditRating || 7}</span>
                   </div>
                   <p className="mt-2 text-sm text-muted-foreground">Group Credit Rating</p>
-                  <p className="text-xs font-medium text-accent uppercase tracking-wider mt-1">Tier 1 Member</p>
                 </div>
               </CardContent>
             </Card>
@@ -104,19 +183,19 @@ export default function MemberDetails() {
                   <span className="text-muted-foreground flex items-center gap-2">
                     <Wallet className="h-4 w-4" /> Total Deposit
                   </span>
-                  <span className="font-bold">₹{member.totalDeposit.toLocaleString()}</span>
+                  <span className="font-bold">₹{stats.totalDeposit.toLocaleString()}</span>
                 </div>
                 <div className="flex justify-between items-center text-sm">
                   <span className="text-muted-foreground flex items-center gap-2">
                     <HandCoins className="h-4 w-4" /> Total Loan Taken
                   </span>
-                  <span className="font-bold">₹{member.totalLoanTaken.toLocaleString()}</span>
+                  <span className="font-bold">₹{stats.totalLoanTaken.toLocaleString()}</span>
                 </div>
                 <div className="flex justify-between items-center text-sm">
                   <span className="text-muted-foreground flex items-center gap-2">
                     <Info className="h-4 w-4" /> Outstanding
                   </span>
-                  <span className="font-bold text-destructive">₹{member.currentOutstandingLoan.toLocaleString()}</span>
+                  <span className="font-bold text-destructive">₹{stats.currentOutstandingLoan.toLocaleString()}</span>
                 </div>
               </CardContent>
             </Card>
@@ -156,7 +235,7 @@ export default function MemberDetails() {
                     </div>
                   </div>
                 ) : (
-                  <p className="text-sm text-muted-foreground">Unable to generate insights at this time.</p>
+                  <p className="text-sm text-muted-foreground">Record some transactions to generate AI insights.</p>
                 )}
               </CardContent>
             </Card>
@@ -169,38 +248,57 @@ export default function MemberDetails() {
                 </div>
                 <Button variant="outline" size="sm" className="bg-white">
                   <Calendar className="h-4 w-4 mr-2" />
-                  Filter by Month
+                  Filter
                 </Button>
               </CardHeader>
-              <Table>
-                <TableHeader>
-                  <TableRow className="bg-muted/30">
-                    <TableHead>Date</TableHead>
-                    <TableHead>Type</TableHead>
-                    <TableHead>Comment</TableHead>
-                    <TableHead className="text-right">Amount</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {transactions.map((tx) => (
-                    <TableRow key={tx.id}>
-                      <TableCell className="text-sm text-muted-foreground">{new Date(tx.date).toLocaleDateString()}</TableCell>
-                      <TableCell>
-                        <Badge variant="outline" className="capitalize text-xs">
-                          {tx.type.replace('_', ' ')}
-                        </Badge>
-                      </TableCell>
-                      <TableCell className="text-sm italic">{tx.comment}</TableCell>
-                      <TableCell className={cn(
-                        "text-right font-bold",
-                        tx.type === 'loan' ? 'text-destructive' : 'text-primary'
-                      )}>
-                        {tx.type === 'loan' ? '-' : '+'}₹{tx.amount.toLocaleString()}
-                      </TableCell>
-                    </TableRow>
-                  ))}
-                </TableBody>
-              </Table>
+              <div className="relative min-h-[200px]">
+                {txLoading ? (
+                  <div className="absolute inset-0 flex items-center justify-center">
+                    <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+                  </div>
+                ) : (
+                  <Table>
+                    <TableHeader>
+                      <TableRow className="bg-muted/30">
+                        <TableHead>Date</TableHead>
+                        <TableHead>Type</TableHead>
+                        <TableHead>Comment</TableHead>
+                        <TableHead className="text-right">Amount</TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {transactions?.map((tx) => (
+                        <TableRow key={tx.id}>
+                          <TableCell className="text-sm text-muted-foreground">
+                            {tx.transactionDate ? new Date(tx.transactionDate).toLocaleDateString() : '-'}
+                          </TableCell>
+                          <TableCell>
+                            <Badge variant="outline" className="capitalize text-[10px]">
+                              {tx.transactionType.replace(/([A-Z])/g, ' $1').trim()}
+                            </Badge>
+                          </TableCell>
+                          <TableCell className="text-sm italic text-muted-foreground max-w-[200px] truncate">
+                            {tx.comment}
+                          </TableCell>
+                          <TableCell className={cn(
+                            "text-right font-bold",
+                            tx.balanceImpact === 'Debit' ? 'text-destructive' : 'text-primary'
+                          )}>
+                            {tx.balanceImpact === 'Debit' ? '-' : '+'}₹{tx.amount.toLocaleString()}
+                          </TableCell>
+                        </TableRow>
+                      ))}
+                      {(!transactions || transactions.length === 0) && (
+                        <TableRow>
+                          <TableCell colSpan={4} className="h-24 text-center text-muted-foreground">
+                            No transactions found for this member.
+                          </TableCell>
+                        </TableRow>
+                      )}
+                    </TableBody>
+                  </Table>
+                )}
+              </div>
             </Card>
           </div>
         </div>
