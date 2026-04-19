@@ -80,6 +80,7 @@ export default function NewLoanPage() {
       loanDate,
       outstandingPrincipal: amount,
       outstandingInterest: 0,
+      status: 'Active',
       isOutsiderLoan: false,
       comment,
       createdAt: timestamp,
@@ -108,7 +109,7 @@ export default function NewLoanPage() {
       title: "Loan issued",
       description: `Loan ${nextId} for ₹${amount} has been disbursed to ${memberName}.`,
     });
-    router.push("/transactions");
+    router.push("/loans");
   }
 
   return (

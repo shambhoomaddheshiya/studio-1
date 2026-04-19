@@ -1,3 +1,4 @@
+
 {
   "entities": {
     "Member": {
@@ -81,6 +82,11 @@
           "type": "number",
           "description": "The current accrued but unpaid interest on the loan."
         },
+        "status": {
+          "type": "string",
+          "description": "The current state of the loan (e.g., 'Active', 'Closed').",
+          "enum": ["Active", "Closed"]
+        },
         "isOutsiderLoan": {
           "type": "boolean",
           "description": "Indicates if this loan was given to an entity not registered as a member."
@@ -111,6 +117,7 @@
         "loanDate",
         "outstandingPrincipal",
         "outstandingInterest",
+        "status",
         "isOutsiderLoan",
         "createdAt",
         "updatedAt"

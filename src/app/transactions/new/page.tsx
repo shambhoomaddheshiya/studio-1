@@ -28,7 +28,7 @@ import {
 } from "@/components/ui/select";
 import { useFirestore, useCollection, useMemoFirebase } from "@/firebase";
 import { collection, doc } from "firebase/firestore";
-import { setDocumentNonBlocking } from "@/firebase/non-blocking-updates";
+import { setDocumentNonBlocking, updateDocumentNonBlocking } from "@/firebase/non-blocking-updates";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Calendar } from "@/components/ui/calendar";
 import { format } from "date-fns";
@@ -53,7 +53,7 @@ export default function NewTransactionPage() {
   // Filter loans for the selected member
   const memberLoans = React.useMemo(() => {
     if (!allLoans || !memberId) return [];
-    return allLoans.filter(loan => loan.memberId === memberId);
+    return allLoans.filter(loan => loan.memberId === memberId && loan.status !== 'Closed');
   }, [allLoans, memberId]);
 
   async function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
@@ -176,6 +176,29 @@ export default function NewTransactionPage() {
         }
       }
     });
+
+    // Update Loan Document if principal or interest was paid
+    if (loanIdForRepayment) {
+      const selectedLoan = allLoans?.find(l => l.id === loanIdForRepayment);
+      if (selectedLoan) {
+        const principalPaid = Number(formData.get('repayment_amount')) || 0;
+        const interestPaid = Number(formData.get('interest_paid_amount')) || 0;
+
+        if (principalPaid > 0 || interestPaid > 0) {
+          const newPrincipal = Math.max(0, (selectedLoan.outstandingPrincipal || 0) - principalPaid);
+          const newInterest = Math.max(0, (selectedLoan.outstandingInterest || 0) - interestPaid);
+          const newStatus = newPrincipal <= 0 ? 'Closed' : 'Active';
+
+          const loanDocRef = doc(db, 'loans', selectedLoan.id);
+          updateDocumentNonBlocking(loanDocRef, {
+            outstandingPrincipal: newPrincipal,
+            outstandingInterest: newInterest,
+            status: newStatus,
+            updatedAt: timestamp
+          });
+        }
+      }
+    }
 
     if (recordedCount === 0) {
       toast({ variant: "destructive", title: "No amounts entered", description: "Please enter at least one transaction amount." });

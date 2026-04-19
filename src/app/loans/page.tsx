@@ -1,3 +1,4 @@
+
 "use client"
 
 import React, { useState } from "react";
@@ -125,7 +126,7 @@ export default function LoansPage() {
       <main className="flex-1 p-4 sm:p-8 max-w-7xl mx-auto w-full space-y-6">
         <header className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
           <div>
-            <h1 className="text-3xl font-bold tracking-tight text-primary font-headline">Active Loans</h1>
+            <h1 className="text-3xl font-bold tracking-tight text-primary font-headline">Loans Directory</h1>
             <p className="text-muted-foreground">Manage and track all issued loans and balances.</p>
           </div>
           <Button asChild>
@@ -151,6 +152,7 @@ export default function LoansPage() {
                     <TableHead>Recipient</TableHead>
                     <TableHead>Principal</TableHead>
                     <TableHead>Interest Rate</TableHead>
+                    <TableHead>Status</TableHead>
                     <TableHead className="text-right">Outstanding</TableHead>
                     <TableHead className="w-[80px]"></TableHead>
                   </TableRow>
@@ -175,6 +177,14 @@ export default function LoansPage() {
                         </TableCell>
                         <TableCell>
                           {(loan.interestRate * 100).toFixed(1)}% p.m.
+                        </TableCell>
+                        <TableCell>
+                          <Badge 
+                            variant={loan.status === 'Closed' ? 'secondary' : 'default'}
+                            className={loan.status === 'Closed' ? 'bg-slate-100 text-slate-600' : 'bg-green-100 text-green-700 hover:bg-green-100'}
+                          >
+                            {loan.status || 'Active'}
+                          </Badge>
                         </TableCell>
                         <TableCell className="text-right font-bold text-destructive">
                           ₹{(loan.outstandingPrincipal + (loan.outstandingInterest || 0)).toLocaleString()}
@@ -213,7 +223,7 @@ export default function LoansPage() {
                   })}
                   {(!loans || loans.length === 0) && !isLoading && (
                     <TableRow>
-                      <TableCell colSpan={7} className="h-24 text-center text-muted-foreground">
+                      <TableCell colSpan={8} className="h-24 text-center text-muted-foreground">
                         No loans issued yet.
                       </TableCell>
                     </TableRow>
