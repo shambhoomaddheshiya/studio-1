@@ -232,7 +232,6 @@ export default function MembersPage() {
                             )}>
                               {dynamicScore} / 10
                             </span>
-                            <span className="text-[10px] text-muted-foreground">Dynamic</span>
                           </div>
                         </TableCell>
                         <TableCell className="text-right">

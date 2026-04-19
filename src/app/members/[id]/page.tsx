@@ -249,7 +249,7 @@ export default function MemberDetails() {
                   <div className="relative flex items-center justify-center w-24 h-24 rounded-full border-4 border-accent/20">
                     <span className="text-3xl font-bold text-primary">{calculatedCreditScore}</span>
                   </div>
-                  <p className="mt-2 text-sm text-muted-foreground">Dynamic Credit Rating</p>
+                  <p className="mt-2 text-sm text-muted-foreground">Credit Rating</p>
                   <p className="text-[10px] text-muted-foreground mt-1">(Scale 1-10 based on 6M history)</p>
                 </div>
               </CardContent>
