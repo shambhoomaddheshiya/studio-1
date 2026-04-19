@@ -37,14 +37,45 @@ const AiAssessmentInputSchema = z.object({
     })).optional(),
   }).optional().describe('Current group financial summary and detailed records for context.'),
 });
+export type AiAssessmentInput = z.infer<typeof AiAssessmentInputSchema>;
 
 const AiAssessmentOutputSchema = z.object({
   answer: z.string().describe('The AI\'s response providing insights or answers.'),
 });
+export type AiAssessmentOutput = z.infer<typeof AiAssessmentOutputSchema>;
 
-export async function askAiAssessment(input: z.infer<typeof AiAssessmentInputSchema>) {
+export async function askAiAssessment(input: AiAssessmentInput): Promise<AiAssessmentOutput> {
   return aiAssessmentFlow(input);
 }
+
+const aiAssessmentPrompt = ai.definePrompt({
+  name: 'aiAssessmentPrompt',
+  input: { schema: AiAssessmentInputSchema },
+  output: { schema: AiAssessmentOutputSchema },
+  prompt: `You are the Yuva Finance 2 AI Advisor. 
+You help the group admin manage the community fund effectively.
+
+Group Stats Context:
+- Total Fund Available: ₹{{context.totalFunds}}
+- Active Members Count: {{context.activeMembers}}
+- Total Outstanding Loans: ₹{{context.outstandingLoans}}
+- Total Interest Earned: ₹{{context.totalInterestEarned}}
+- Current Date (Period): {{context.currentMonth}}/{{context.currentYear}}
+
+Detailed Data Available:
+- Members List: {{#each context.members}} [{{id}}] {{name}} ({{status}}) {{/each}}
+- Active Loans: {{#each context.activeLoans}} {{memberName}}: ₹{{amount}} (Outstanding: ₹{{outstanding}}) {{/each}}
+- Recent Deposits (Current Month): {{#each context.recentDeposits}} {{memberName}}: ₹{{amount}} on {{date}} {{/each}}
+
+Instructions:
+1. Use the provided detailed lists to answer specific questions about members, their loans, or their payment status.
+2. If the user asks "Who hasn't paid", cross-reference the Members List with the Recent Deposits for the current month.
+3. If a specific member (e.g., Raju) is mentioned, look for them in the Members and Loans data.
+4. If information is missing, politely inform the user.
+5. Provide professional, concise, and helpful financial insights.
+
+User Question: {{query}}`,
+});
 
 const aiAssessmentFlow = ai.defineFlow(
   {
@@ -53,32 +84,7 @@ const aiAssessmentFlow = ai.defineFlow(
     outputSchema: AiAssessmentOutputSchema,
   },
   async (input) => {
-    const response = await ai.generate({
-      prompt: `You are the Yuva Finance 2 AI Advisor. 
-      You help the group admin manage the community fund effectively.
-      
-      Group Stats Context:
-      - Total Fund Available: ₹${input.context?.totalFunds ?? 'Unknown'}
-      - Active Members Count: ${input.context?.activeMembers ?? 'Unknown'}
-      - Total Outstanding Loans: ₹${input.context?.outstandingLoans ?? 'Unknown'}
-      - Total Interest Earned: ₹${input.context?.totalInterestEarned ?? 'Unknown'}
-      - Current Date: ${input.context?.currentMonth}/${input.context?.currentYear}
-      
-      Detailed Data Available:
-      - Members List: ${JSON.stringify(input.context?.members || [])}
-      - Active Loans: ${JSON.stringify(input.context?.activeLoans || [])}
-      - Recent Deposits (Current Period): ${JSON.stringify(input.context?.recentDeposits || [])}
-      
-      Instructions:
-      1. Use the "Detailed Data" to answer specific questions about people, their loans, or their payment status.
-      2. If a user asks "Who hasn't paid", compare the Members List with the Recent Deposits for the current month.
-      3. If a user asks about a specific person (e.g., Raju), search for them in the Members and Loans data.
-      4. If you don't find a specific person or data point, politely inform the user.
-      5. Provide professional, insightful, and encouraging responses.
-      6. Keep responses concise but comprehensive.
-      
-      User Question: ${input.query}`,
-    });
-    return { answer: response.text || 'I am sorry, I could not generate a response.' };
+    const { output } = await aiAssessmentPrompt(input);
+    return output!;
   }
 );
