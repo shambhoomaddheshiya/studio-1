@@ -131,13 +131,13 @@ export default function DepositsPage() {
       <main className="flex-1 p-4 sm:p-8 max-w-7xl mx-auto w-full space-y-6">
         <header className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
           <div>
-            <h1 className="text-3xl font-bold tracking-tight text-primary font-headline">Monthly Deposits</h1>
+            <h1 className="text-3xl font-bold tracking-tight text-primary font-headline">Bulk Deposits</h1>
             <p className="text-muted-foreground">View and track all member contributions.</p>
           </div>
           <Button asChild>
             <Link href="/deposits/new">
               <Plus className="h-4 w-4 mr-2" />
-              Record Deposit
+              Record Bulk Deposit
             </Link>
           </Button>
         </header>

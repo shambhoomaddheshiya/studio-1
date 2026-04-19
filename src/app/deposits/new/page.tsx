@@ -1,4 +1,3 @@
-
 "use client"
 
 import React, { useState, useEffect } from "react";
@@ -42,14 +41,6 @@ export default function NewDepositPage() {
   const membersRef = useMemoFirebase(() => collection(db, 'members'), [db]);
   const { data: members, isLoading: membersLoading } = useCollection(membersRef);
 
-  // Initialize selected members when data loads
-  useEffect(() => {
-    if (members && selectedMemberIds.length === 0) {
-      // By default, maybe we don't select all to avoid accidental bulk writes
-      // But based on the image, it seems useful to have them ready
-    }
-  }, [members]);
-
   const handleSelectAll = (checked: boolean | string) => {
     if (checked === true && members) {
       setSelectedMemberIds(members.map(m => m.id));
@@ -73,7 +64,7 @@ export default function NewDepositPage() {
       toast({
         variant: "destructive",
         title: "No members selected",
-        description: "Please select at least one member to record a deposit.",
+        description: "Please select at least one member to record a bulk deposit.",
       });
       return;
     }
@@ -149,8 +140,8 @@ export default function NewDepositPage() {
             <Link href="/"><ArrowLeft className="h-5 w-5" /></Link>
           </Button>
           <div>
-            <h1 className="text-3xl font-bold tracking-tight text-primary font-headline">Record Deposit</h1>
-            <p className="text-muted-foreground">Log monthly contributions or fine payments.</p>
+            <h1 className="text-3xl font-bold tracking-tight text-primary font-headline">Record Bulk Deposit</h1>
+            <p className="text-muted-foreground">Log monthly contributions or fine payments for multiple members.</p>
           </div>
         </header>
 
@@ -266,7 +257,7 @@ export default function NewDepositPage() {
                     <><Loader2 className="mr-2 h-4 w-4 animate-spin" /> Recording...</>
                   ) : (
                     selectedMemberIds.length > 0 
-                      ? `Deposit for ${selectedMemberIds.length} member${selectedMemberIds.length > 1 ? 's' : ''}`
+                      ? `Bulk Deposit for ${selectedMemberIds.length} member${selectedMemberIds.length > 1 ? 's' : ''}`
                       : 'Select Members'
                   )}
                 </Button>

@@ -8,7 +8,7 @@ import { cn } from '@/lib/utils';
 const navItems = [
   { name: 'Dashboard', href: '/', icon: LayoutDashboard },
   { name: 'Members', href: '/members', icon: Users },
-  { name: 'Deposits', href: '/deposits', icon: Wallet },
+  { name: 'Bulk Deposit', href: '/deposits', icon: Wallet },
   { name: 'Loans', href: '/loans', icon: Banknote },
   { name: 'Transactions', href: '/transactions', icon: History },
 ];
@@ -22,7 +22,7 @@ export function Navbar() {
         <div className="bg-primary p-1.5 rounded-lg">
           <Banknote className="h-6 w-6 text-primary-foreground" />
         </div>
-        <span className="font-headline text-xl font-bold tracking-tight text-primary">FundFlow</span>
+        <span className="font-headline text-xl font-bold tracking-tight text-primary">Yuva Finance 2</span>
       </div>
       
       <div className="hidden md:flex items-center gap-1">

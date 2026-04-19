@@ -37,7 +37,7 @@ const explainCreditScorePrompt = ai.definePrompt({
   name: 'explainCreditScorePrompt',
   input: { schema: AiCreditScoreExplanationInputSchema },
   output: { schema: AiCreditScoreExplanationOutputSchema },
-  prompt: `You are an AI assistant for a finance group named FundFlow. Your task is to provide a brief and clear explanation of a member's credit score within the group, highlighting the most significant positive and negative factors that influenced it. Additionally, you must offer a list of actionable insights or recommendations for the member to improve their credit standing and financial behavior within the group.
+  prompt: `You are an AI assistant for a finance group named Yuva Finance 2. Your task is to provide a brief and clear explanation of a member's credit score within the group, highlighting the most significant positive and negative factors that influenced it. Additionally, you must offer a list of actionable insights or recommendations for the member to improve their credit standing and financial behavior within the group.
 
 The member's credit score is: {{{creditScore}}} (on a scale of 1 to 10).
 

@@ -79,7 +79,7 @@ export default function Dashboard() {
       <main className="flex-1 p-4 sm:p-8 max-w-7xl mx-auto w-full space-y-8">
         <header className="flex flex-col gap-2">
           <h1 className="text-3xl font-bold tracking-tight text-primary font-headline">Financial Overview</h1>
-          <p className="text-muted-foreground">Welcome back, admin. Here's what's happening in FundFlow today.</p>
+          <p className="text-muted-foreground">Welcome back, admin. Here's what's happening in Yuva Finance 2 today.</p>
         </header>
 
         {/* Top Stats */}
@@ -185,7 +185,7 @@ export default function Dashboard() {
                   <Link href="/members/new">Add New Member</Link>
                 </Button>
                 <Button variant="outline" className="w-full bg-white/10 border-white/20 text-white hover:bg-white/20" asChild>
-                  <Link href="/deposits/new">Record Monthly Deposit</Link>
+                  <Link href="/deposits/new">Record Bulk Deposit</Link>
                 </Button>
                 <Button variant="outline" className="w-full bg-white/10 border-white/20 text-white hover:bg-white/20" asChild>
                   <Link href="/loans/new">Issue New Loan</Link>
