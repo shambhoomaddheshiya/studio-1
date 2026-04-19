@@ -1,5 +1,7 @@
+
 "use client"
 
+import React, { useMemo, useState, useEffect } from "react";
 import { Navbar } from "@/components/layout/Navbar";
 import { StatCard } from "@/components/dashboard/StatCard";
 import { 
@@ -11,7 +13,8 @@ import {
   History,
   Coins,
   Loader2,
-  Banknote
+  Banknote,
+  CalendarCheck
 } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -23,11 +26,6 @@ import { collection, query, orderBy, limit } from "firebase/firestore";
 export default function Dashboard() {
   const db = useFirestore();
   const { user, isUserLoading } = useUser();
-
-  const txQuery = useMemoFirebase(() => {
-    if (!db || !user) return null;
-    return query(collection(db, 'transactions'), orderBy('transactionDate', 'desc'), limit(5));
-  }, [db, user]);
 
   const allTxQuery = useMemoFirebase(() => {
     if (!db || !user) return null;
@@ -44,10 +42,62 @@ export default function Dashboard() {
     return collection(db, 'loans');
   }, [db, user]);
   
-  const { data: recentTransactions, isLoading: txLoading } = useCollection(txQuery);
-  const { data: allTransactions } = useCollection(allTxQuery);
+  const { data: allTransactions, isLoading: txLoading } = useCollection(allTxQuery);
   const { data: members } = useCollection(membersQuery);
   const { data: allLoans } = useCollection(loansQuery);
+
+  const [currentDate, setCurrentDate] = useState<Date | null>(null);
+
+  useEffect(() => {
+    setCurrentDate(new Date());
+  }, []);
+
+  // Global dynamic stats
+  const totalFunds = useMemo(() => {
+    return allTransactions?.reduce((acc, tx) => {
+      return tx.balanceImpact === 'Credit' ? acc + (tx.amount || 0) : acc - (tx.amount || 0);
+    }, 0) || 0;
+  }, [allTransactions]);
+  
+  const totalInterest = useMemo(() => {
+    return allTransactions?.filter(tx => tx.transactionType === 'InterestPayment')
+      .reduce((acc, tx) => acc + (tx.amount || 0), 0) || 0;
+  }, [allTransactions]);
+
+  const totalLoanDisbursed = useMemo(() => {
+    return allTransactions?.filter(tx => tx.transactionType === 'LoanDisbursement')
+      .reduce((acc, tx) => acc + (tx.amount || 0), 0) || 0;
+  }, [allTransactions]);
+
+  const outstandingLoan = useMemo(() => {
+    return allLoans?.reduce((acc, loan) => {
+      return acc + (loan.outstandingPrincipal || 0) + (loan.outstandingInterest || 0);
+    }, 0) || 0;
+  }, [allLoans]);
+
+  // Monthly Overview Calculations
+  const monthlyStats = useMemo(() => {
+    if (!allTransactions || !currentDate) {
+      return { deposits: 0, loans: 0, interest: 0, recovered: 0, label: "..." };
+    }
+    const month = currentDate.getMonth();
+    const year = currentDate.getFullYear();
+    const label = `${currentDate.toLocaleString('default', { month: 'long' })} ${year}`;
+
+    const monthlyTx = allTransactions.filter(tx => {
+      if (!tx.transactionDate) return false;
+      const d = new Date(tx.transactionDate);
+      return d.getMonth() === month && d.getFullYear() === year;
+    });
+
+    return {
+      deposits: monthlyTx.filter(tx => tx.transactionType === 'Deposit').reduce((acc, tx) => acc + (tx.amount || 0), 0),
+      loans: monthlyTx.filter(tx => tx.transactionType === 'LoanDisbursement').reduce((acc, tx) => acc + (tx.amount || 0), 0),
+      interest: monthlyTx.filter(tx => tx.transactionType === 'InterestPayment').reduce((acc, tx) => acc + (tx.amount || 0), 0),
+      recovered: monthlyTx.filter(tx => tx.transactionType === 'PrincipalRepayment').reduce((acc, tx) => acc + (tx.amount || 0), 0),
+      label
+    };
+  }, [allTransactions, currentDate]);
 
   if (isUserLoading) {
     return (
@@ -56,21 +106,6 @@ export default function Dashboard() {
       </div>
     );
   }
-
-  // Basic dynamic stats
-  const totalFunds = allTransactions?.reduce((acc, tx) => {
-    return tx.balanceImpact === 'Credit' ? acc + (tx.amount || 0) : acc - (tx.amount || 0);
-  }, 0) || 0;
-  
-  const totalInterest = allTransactions?.filter(tx => tx.transactionType === 'InterestPayment')
-    .reduce((acc, tx) => acc + (tx.amount || 0), 0) || 0;
-
-  const totalLoanDisbursed = allTransactions?.filter(tx => tx.transactionType === 'LoanDisbursement')
-    .reduce((acc, tx) => acc + (tx.amount || 0), 0) || 0;
-
-  const outstandingLoan = allLoans?.reduce((acc, loan) => {
-    return acc + (loan.outstandingPrincipal || 0) + (loan.outstandingInterest || 0);
-  }, 0) || 0;
 
   return (
     <div className="min-h-screen flex flex-col">
@@ -124,51 +159,44 @@ export default function Dashboard() {
         </div>
 
         <div className="grid gap-6 lg:grid-cols-3">
-          {/* Recent Transactions */}
+          {/* Monthly Overview */}
           <Card className="lg:col-span-2 border-none shadow-sm">
-            <CardHeader className="flex flex-row items-center justify-between">
+            <CardHeader className="flex flex-row items-center justify-between pb-2">
               <div className="flex items-center gap-2">
-                <History className="h-5 w-5 text-primary" />
-                <CardTitle className="text-lg">Recent Transactions</CardTitle>
+                <CalendarCheck className="h-5 w-5 text-primary" />
+                <CardTitle className="text-lg">Monthly Overview</CardTitle>
               </div>
               <Button variant="ghost" size="sm" asChild>
-                <Link href="/transactions">View All</Link>
+                <Link href="/transactions">View History</Link>
               </Button>
             </CardHeader>
             <CardContent>
               <div className="space-y-4">
+                <div className="pb-4 border-b">
+                  <p className="text-sm font-medium text-muted-foreground">Summary for: <span className="text-primary font-bold">{monthlyStats.label}</span></p>
+                </div>
+                
                 {txLoading ? (
                   <div className="flex justify-center p-8"><Loader2 className="animate-spin text-muted-foreground" /></div>
                 ) : (
-                  recentTransactions?.map((tx) => (
-                    <div key={tx.id} className="flex items-center justify-between p-3 rounded-lg bg-background hover:bg-muted transition-colors">
-                      <div className="flex items-center gap-4">
-                        <div className={cn(
-                          "p-2 rounded-full",
-                          tx.balanceImpact === 'Credit' ? 'bg-green-100 text-green-600' : 'bg-blue-100 text-primary'
-                        )}>
-                          <ArrowUpRight className={cn("h-4 w-4", tx.balanceImpact === 'Debit' && "rotate-180")} />
-                        </div>
-                        <div>
-                          <p className="text-sm font-medium">{tx.memberName}</p>
-                          <p className="text-xs text-muted-foreground capitalize">
-                            {(tx.transactionType || '').replace(/([A-Z])/g, ' $1').trim()} • {tx.transactionDate ? new Date(tx.transactionDate).toLocaleDateString() : 'N/A'}
-                          </p>
-                        </div>
-                      </div>
-                      <div className="text-right">
-                        <p className={cn(
-                          "text-sm font-bold",
-                          tx.balanceImpact === 'Debit' ? 'text-destructive' : 'text-primary'
-                        )}>
-                          {tx.balanceImpact === 'Debit' ? '-' : '+'}₹{(tx.amount || 0).toLocaleString()}
-                        </p>
-                      </div>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 pt-2">
+                    <div className="p-4 rounded-xl bg-slate-50 border border-slate-100 transition-all hover:shadow-md">
+                      <p className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider mb-1">Total Amount Deposits</p>
+                      <p className="text-2xl font-bold text-primary">₹{monthlyStats.deposits.toLocaleString()}</p>
                     </div>
-                  ))
-                )}
-                {(!recentTransactions || recentTransactions.length === 0) && !txLoading && (
-                  <p className="text-center text-muted-foreground py-8">No transactions yet.</p>
+                    <div className="p-4 rounded-xl bg-slate-50 border border-slate-100 transition-all hover:shadow-md">
+                      <p className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider mb-1">Amount Given as Loan</p>
+                      <p className="text-2xl font-bold text-destructive">₹{monthlyStats.loans.toLocaleString()}</p>
+                    </div>
+                    <div className="p-4 rounded-xl bg-slate-50 border border-slate-100 transition-all hover:shadow-md">
+                      <p className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider mb-1">Interest Received</p>
+                      <p className="text-2xl font-bold text-green-600">₹{monthlyStats.interest.toLocaleString()}</p>
+                    </div>
+                    <div className="p-4 rounded-xl bg-slate-50 border border-slate-100 transition-all hover:shadow-md">
+                      <p className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider mb-1">Principal Recovered</p>
+                      <p className="text-2xl font-bold text-indigo-600">₹{monthlyStats.recovered.toLocaleString()}</p>
+                    </div>
+                  </div>
                 )}
               </div>
             </CardContent>
