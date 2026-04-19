@@ -181,18 +181,11 @@ export default function Dashboard() {
             icon={HandCoins}
             iconClassName="bg-indigo-100 text-indigo-600"
           />
-          <StatCard 
-            title="Alerts" 
-            value={totalFunds < 5000 ? 1 : 0}
-            description="System status check"
-            icon={AlertCircle}
-            iconClassName="bg-amber-100 text-amber-600"
-          />
         </div>
 
         <div className="grid gap-6 lg:grid-cols-3">
           {/* Monthly Fund Summary */}
-          <Card className="lg:col-span-2 border-none shadow-sm">
+          <Card className="lg:col-span-3 border-none shadow-sm">
             <CardHeader className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-2">
               <div className="flex items-center gap-2">
                 <CalendarCheck className="h-5 w-5 text-primary" />
@@ -256,46 +249,6 @@ export default function Dashboard() {
               </div>
             </CardContent>
           </Card>
-
-          {/* Quick Actions / Summary */}
-          <div className="space-y-6">
-            <Card className="border-none shadow-sm bg-primary text-primary-foreground">
-              <CardHeader>
-                <CardTitle className="text-lg">Quick Actions</CardTitle>
-              </CardHeader>
-              <CardContent className="grid gap-2">
-                <Button className="w-full bg-accent text-accent-foreground hover:bg-accent/90" asChild>
-                  <Link href="/members/new">Add New Member</Link>
-                </Button>
-                <Button variant="outline" className="w-full bg-white/10 border-white/20 text-white hover:bg-white/20" asChild>
-                  <Link href="/deposits/new">Record Bulk Deposit</Link>
-                </Button>
-                <Button variant="outline" className="w-full bg-white/10 border-white/20 text-white hover:bg-white/20" asChild>
-                  <Link href="/loans/new">Issue New Loan</Link>
-                </Button>
-              </CardContent>
-            </Card>
-
-            <Card className="border-none shadow-sm">
-              <CardHeader>
-                <CardTitle className="text-lg">Active Alerts</CardTitle>
-              </CardHeader>
-              <CardContent>
-                <div className="space-y-3">
-                  {totalFunds < 5000 && (
-                    <div className="flex items-start gap-3 text-sm p-2 rounded-md bg-amber-50 text-amber-800 border border-amber-100">
-                      <AlertCircle className="h-4 w-4 mt-0.5 shrink-0" />
-                      <p>Low Fund Alert: Available balance below ₹5,000.</p>
-                    </div>
-                  )}
-                  <div className="flex items-start gap-3 text-sm p-2 rounded-md bg-secondary/10 text-secondary-foreground border border-secondary/20">
-                    <AlertCircle className="h-4 w-4 mt-0.5 shrink-0" />
-                    <p>System operational. All data synced to Firestore.</p>
-                  </div>
-                </div>
-              </CardContent>
-            </Card>
-          </div>
         </div>
       </main>
     </div>
