@@ -301,14 +301,12 @@ export default function MemberDetails() {
                 ) : (
                   <Table>
                     <TableHeader>
-                      <TableHeader>
-                        <TableRow className="bg-muted/30">
-                          <TableHead>Date</TableHead>
-                          <TableHead>Type</TableHead>
-                          <TableHead>Comment</TableHead>
-                          <TableHead className="text-right">Amount</TableHead>
-                        </TableRow>
-                      </TableHeader>
+                      <TableRow className="bg-muted/30">
+                        <TableHead>Date</TableHead>
+                        <TableHead>Type</TableHead>
+                        <TableHead>Comment</TableHead>
+                        <TableHead className="text-right">Amount</TableHead>
+                      </TableRow>
                     </TableHeader>
                     <TableBody>
                       {transactions?.map((tx) => (
