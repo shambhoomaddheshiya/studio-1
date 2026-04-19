@@ -99,7 +99,7 @@ export default function TransactionsPage() {
   const transactions = React.useMemo(() => {
     if (!rawTransactions) return [];
     
-    let filtered = rawTransactions;
+    let filtered = [...rawTransactions];
 
     // Search filter
     if (searchTerm) {
@@ -142,7 +142,12 @@ export default function TransactionsPage() {
       });
     }
 
-    return filtered;
+    // Explicit manual sort to ensure latest entries at the top
+    return filtered.sort((a, b) => {
+      const dateA = new Date(a.transactionDate || 0).getTime();
+      const dateB = new Date(b.transactionDate || 0).getTime();
+      return dateB - dateA;
+    });
   }, [rawTransactions, searchTerm, activeFilter, selectedMonth, selectedYear]);
 
   const handleDelete = () => {
@@ -266,7 +271,7 @@ export default function TransactionsPage() {
                 className="cursor-pointer hover:bg-muted py-1 px-4 transition-all"
                 onClick={() => setActiveFilter("Deposits")}
               >
-                Deposits
+                Bulk Deposits
               </Badge>
               <Badge 
                 variant={activeFilter === "Loans" ? "default" : "outline"} 
