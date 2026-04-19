@@ -1,4 +1,3 @@
-
 "use client"
 
 import React, { useState } from "react";
@@ -13,7 +12,7 @@ import {
 } from "@/components/ui/table";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { Plus, Loader2, MoreHorizontal, Edit, Trash2, IndianRupee, Calendar, FileText } from "lucide-react";
+import { Plus, Loader2, MoreHorizontal, Edit, Trash2, IndianRupee, Calendar, FileText, Search, Filter } from "lucide-react";
 import Link from "next/link";
 import { Card } from "@/components/ui/card";
 import { useFirestore, useCollection, useMemoFirebase, useUser } from "@/firebase";
@@ -56,18 +55,42 @@ export default function LoansPage() {
   const [loanToEdit, setLoanToEdit] = useState<any | null>(null);
   const [isUpdating, setIsUpdating] = useState(false);
   
+  // Filtering state
+  const [searchTerm, setSearchTerm] = useState("");
+  const [statusFilter, setStatusFilter] = useState("All");
+  
   const loansRef = useMemoFirebase(() => {
     if (!db || !user) return null;
     return query(collection(db, 'loans'), orderBy('loanDate', 'desc'));
   }, [db, user]);
 
-  const { data: loans, isLoading } = useCollection(loansRef);
+  const { data: rawLoans, isLoading } = useCollection(loansRef);
 
   const membersRef = useMemoFirebase(() => {
     if (!db || !user) return null;
     return collection(db, 'members');
   }, [db, user]);
   const { data: members } = useCollection(membersRef);
+
+  // Computed filtered loans
+  const loans = React.useMemo(() => {
+    if (!rawLoans) return [];
+    
+    return rawLoans.filter(loan => {
+      const member = members?.find(m => m.id === loan.memberId);
+      const memberName = loan.isOutsiderLoan ? (loan.outsiderName || "") : (member?.name || "");
+      const matchesSearch = 
+        memberName.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        loan.id.toLowerCase().includes(searchTerm.toLowerCase());
+      
+      const matchesStatus = 
+        statusFilter === "All" || 
+        (statusFilter === "Active" && loan.status !== "Closed") ||
+        (statusFilter === "Closed" && loan.status === "Closed");
+      
+      return matchesSearch && matchesStatus;
+    });
+  }, [rawLoans, members, searchTerm, statusFilter]);
 
   const handleDelete = () => {
     if (loanToDelete && db) {
@@ -138,6 +161,47 @@ export default function LoansPage() {
         </header>
 
         <Card className="border-none shadow-sm overflow-hidden">
+          {/* Filtering UI */}
+          <div className="p-4 border-b flex flex-col md:flex-row gap-4 items-center justify-between bg-white">
+            <div className="relative w-full md:max-w-md">
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+              <Input 
+                placeholder="Search by member name or ID..." 
+                className="pl-10" 
+                value={searchTerm}
+                onChange={(e) => setSearchTerm(e.target.value)}
+              />
+            </div>
+            <div className="flex items-center gap-2 w-full md:w-auto overflow-x-auto">
+              <Badge 
+                variant={statusFilter === "All" ? "default" : "outline"} 
+                className="cursor-pointer hover:bg-muted py-1.5 px-4 transition-all"
+                onClick={() => setStatusFilter("All")}
+              >
+                All
+              </Badge>
+              <Badge 
+                variant={statusFilter === "Active" ? "default" : "outline"} 
+                className="cursor-pointer hover:bg-muted py-1.5 px-4 transition-all"
+                onClick={() => setStatusFilter("Active")}
+              >
+                Active
+              </Badge>
+              <Badge 
+                variant={statusFilter === "Closed" ? "default" : "outline"} 
+                className="cursor-pointer hover:bg-muted py-1.5 px-4 transition-all"
+                onClick={() => setStatusFilter("Closed")}
+              >
+                Closed
+              </Badge>
+              <div className="h-4 w-px bg-border mx-2" />
+              <Button variant="ghost" size="sm">
+                <Filter className="h-4 w-4 mr-2" />
+                Advanced
+              </Button>
+            </div>
+          </div>
+
           <div className="relative min-h-[400px]">
             {isLoading ? (
               <div className="absolute inset-0 flex items-center justify-center">
@@ -158,7 +222,7 @@ export default function LoansPage() {
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {loans?.map((loan) => {
+                  {loans.map((loan) => {
                     const member = members?.find(m => m.id === loan.memberId);
                     return (
                       <TableRow key={loan.id} className="hover:bg-muted/30 transition-colors">
@@ -221,10 +285,10 @@ export default function LoansPage() {
                       </TableRow>
                     );
                   })}
-                  {(!loans || loans.length === 0) && !isLoading && (
+                  {(loans.length === 0) && !isLoading && (
                     <TableRow>
                       <TableCell colSpan={8} className="h-24 text-center text-muted-foreground">
-                        No loans issued yet.
+                        {searchTerm || statusFilter !== "All" ? "No loans match your search/filter criteria." : "No loans issued yet."}
                       </TableCell>
                     </TableRow>
                   )}
