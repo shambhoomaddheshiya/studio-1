@@ -39,8 +39,31 @@ import {
 } from "@/components/ui/dialog";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
+import { 
+  Select, 
+  SelectContent, 
+  SelectItem, 
+  SelectTrigger, 
+  SelectValue 
+} from "@/components/ui/select";
 import { deleteDocumentNonBlocking, updateDocumentNonBlocking } from "@/firebase/non-blocking-updates";
 import { useToast } from "@/hooks/use-toast";
+
+const months = [
+  { value: "All", label: "All Months" },
+  { value: "1", label: "January" },
+  { value: "2", label: "February" },
+  { value: "3", label: "March" },
+  { value: "4", label: "April" },
+  { value: "5", label: "May" },
+  { value: "6", label: "June" },
+  { value: "7", label: "July" },
+  { value: "8", label: "August" },
+  { value: "9", label: "September" },
+  { value: "10", label: "October" },
+  { value: "11", label: "November" },
+  { value: "12", label: "December" },
+];
 
 export default function TransactionsPage() {
   const db = useFirestore();
@@ -48,6 +71,8 @@ export default function TransactionsPage() {
   const { toast } = useToast();
   const [searchTerm, setSearchTerm] = useState("");
   const [activeFilter, setActiveFilter] = useState("All");
+  const [selectedMonth, setSelectedMonth] = useState("All");
+  const [selectedYear, setSelectedYear] = useState("All");
   const [txToDelete, setTxToDelete] = useState<any | null>(null);
   const [txToEdit, setTxToEdit] = useState<any | null>(null);
   const [isUpdating, setIsUpdating] = useState(false);
@@ -58,6 +83,18 @@ export default function TransactionsPage() {
   }, [db, user]);
 
   const { data: rawTransactions, isLoading } = useCollection(txRef);
+
+  // Get unique years from transactions for the filter
+  const availableYears = React.useMemo(() => {
+    if (!rawTransactions) return [];
+    const years = new Set<string>();
+    rawTransactions.forEach(tx => {
+      if (tx.transactionDate) {
+        years.add(new Date(tx.transactionDate).getFullYear().toString());
+      }
+    });
+    return Array.from(years).sort((a, b) => b.localeCompare(a));
+  }, [rawTransactions]);
 
   const transactions = React.useMemo(() => {
     if (!rawTransactions) return [];
@@ -87,8 +124,26 @@ export default function TransactionsPage() {
       });
     }
 
+    // Month filter
+    if (selectedMonth !== "All") {
+      filtered = filtered.filter(tx => {
+        if (!tx.transactionDate) return false;
+        const txDate = new Date(tx.transactionDate);
+        return (txDate.getMonth() + 1).toString() === selectedMonth;
+      });
+    }
+
+    // Year filter
+    if (selectedYear !== "All") {
+      filtered = filtered.filter(tx => {
+        if (!tx.transactionDate) return false;
+        const txDate = new Date(tx.transactionDate);
+        return txDate.getFullYear().toString() === selectedYear;
+      });
+    }
+
     return filtered;
-  }, [rawTransactions, searchTerm, activeFilter]);
+  }, [rawTransactions, searchTerm, activeFilter, selectedMonth, selectedYear]);
 
   const handleDelete = () => {
     if (txToDelete && db) {
@@ -162,49 +217,79 @@ export default function TransactionsPage() {
         </header>
 
         <Card className="border-none shadow-sm overflow-hidden">
-          <div className="p-4 border-b flex flex-col md:flex-row gap-4 items-center justify-between bg-white">
-            <div className="relative w-full md:max-w-md">
-              <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-              <Input 
-                placeholder="Search by member, ID or type..." 
-                className="pl-10" 
-                value={searchTerm}
-                onChange={(e) => setSearchTerm(e.target.value)}
-              />
+          <div className="p-4 border-b space-y-4 bg-white">
+            <div className="flex flex-col md:flex-row gap-4 items-center justify-between">
+              <div className="relative w-full md:max-w-md">
+                <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                <Input 
+                  placeholder="Search by member, ID or type..." 
+                  className="pl-10" 
+                  value={searchTerm}
+                  onChange={(e) => setSearchTerm(e.target.value)}
+                />
+              </div>
+              <div className="flex items-center gap-2 w-full md:w-auto">
+                <Select value={selectedMonth} onValueChange={setSelectedMonth}>
+                  <SelectTrigger className="w-full md:w-[150px]">
+                    <SelectValue placeholder="Month" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {months.map(m => (
+                      <SelectItem key={m.value} value={m.value}>{m.label}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                <Select value={selectedYear} onValueChange={setSelectedYear}>
+                  <SelectTrigger className="w-full md:w-[120px]">
+                    <SelectValue placeholder="Year" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="All">All Years</SelectItem>
+                    {availableYears.map(year => (
+                      <SelectItem key={year} value={year}>{year}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
             </div>
-            <div className="flex items-center gap-2 w-full md:w-auto overflow-x-auto pb-2 md:pb-0">
+
+            <div className="flex items-center gap-2 w-full overflow-x-auto pb-2 md:pb-0 border-t pt-4">
               <Badge 
                 variant={activeFilter === "All" ? "default" : "outline"} 
-                className="cursor-pointer hover:bg-muted py-1 px-3 transition-all"
+                className="cursor-pointer hover:bg-muted py-1 px-4 transition-all"
                 onClick={() => setActiveFilter("All")}
               >
-                All
+                All Categories
               </Badge>
               <Badge 
                 variant={activeFilter === "Deposits" ? "default" : "outline"} 
-                className="cursor-pointer hover:bg-muted py-1 px-3 transition-all"
+                className="cursor-pointer hover:bg-muted py-1 px-4 transition-all"
                 onClick={() => setActiveFilter("Deposits")}
               >
                 Deposits
               </Badge>
               <Badge 
                 variant={activeFilter === "Loans" ? "default" : "outline"} 
-                className="cursor-pointer hover:bg-muted py-1 px-3 transition-all"
+                className="cursor-pointer hover:bg-muted py-1 px-4 transition-all"
                 onClick={() => setActiveFilter("Loans")}
               >
                 Loans
               </Badge>
               <Badge 
                 variant={activeFilter === "Repayments" ? "default" : "outline"} 
-                className="cursor-pointer hover:bg-muted py-1 px-3 transition-all"
+                className="cursor-pointer hover:bg-muted py-1 px-4 transition-all"
                 onClick={() => setActiveFilter("Repayments")}
               >
                 Repayments
               </Badge>
               <div className="h-4 w-px bg-border mx-2" />
-              <Button variant="ghost" size="sm">
-                <Filter className="h-4 w-4 mr-2" />
-                More Filters
+              <Button variant="ghost" size="sm" onClick={() => {
+                setSearchTerm("");
+                setActiveFilter("All");
+                setSelectedMonth("All");
+                setSelectedYear("All");
+              }}>
+                Clear All
               </Button>
             </div>
           </div>
@@ -290,7 +375,7 @@ export default function TransactionsPage() {
                   {(transactions.length === 0) && (
                     <TableRow>
                       <TableCell colSpan={6} className="h-24 text-center text-muted-foreground">
-                        {searchTerm || activeFilter !== "All" ? "No transactions match your criteria." : "No transactions recorded yet."}
+                        {searchTerm || activeFilter !== "All" || selectedMonth !== "All" || selectedYear !== "All" ? "No transactions match your criteria." : "No transactions recorded yet."}
                       </TableCell>
                     </TableRow>
                   )}
