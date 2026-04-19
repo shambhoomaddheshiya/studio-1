@@ -1,3 +1,4 @@
+
 "use client"
 
 import React, { useState } from "react";
@@ -47,49 +48,68 @@ export default function NewDepositPage() {
     const date = formData.get('date') as string;
     const comment = formData.get('comment') as string;
 
-    const selectedMember = members?.find(m => m.id === memberId);
-    const memberName = selectedMember?.name || "Unknown Member";
-
     const timestamp = new Date().toISOString();
     const entryDate = date ? new Date(date).toISOString() : timestamp;
 
-    // 1. Create Deposit Entry
-    const depositRef = doc(collection(db, "depositEntries"));
-    setDocumentNonBlocking(depositRef, {
-      id: depositRef.id,
-      memberId,
-      month: new Date(entryDate).getMonth() + 1,
-      year: new Date(entryDate).getFullYear(),
-      expectedAmount: 500, // Assuming static rule for now
-      paidAmount: amount,
-      status: 'Paid',
-      lateFineApplied: 0,
-      paymentDate: entryDate,
-      comment,
-      createdAt: timestamp,
-      updatedAt: timestamp,
-    }, { merge: true });
+    const membersToProcess = memberId === 'all' 
+      ? (members || []) 
+      : (members?.filter(m => m.id === memberId) || []);
 
-    // 2. Create Transaction Ledger Entry
-    const txRef = doc(collection(db, "transactions"));
-    setDocumentNonBlocking(txRef, {
-      id: txRef.id,
-      transactionDate: entryDate,
-      transactionType: type === 'deposit' ? 'Deposit' : type === 'fine_payment' ? 'FinePayment' : 'InterestPayment',
-      amount,
-      memberId,
-      memberName,
-      fundCategory: type === 'fine_payment' ? 'FineFund' : 'PrincipalFund',
-      balanceImpact: 'Credit',
-      comment,
-      createdAt: timestamp,
-      updatedAt: timestamp,
-    }, { merge: true });
+    if (membersToProcess.length === 0) {
+      toast({
+        variant: "destructive",
+        title: "No members found",
+        description: "Could not find any members to record transactions for.",
+      });
+      setIsSubmitting(false);
+      return;
+    }
+
+    membersToProcess.forEach(member => {
+      const currentMemberId = member.id;
+      const memberName = member.name || "Unknown Member";
+
+      // 1. Create Deposit Entry
+      const depositRef = doc(collection(db, "depositEntries"));
+      setDocumentNonBlocking(depositRef, {
+        id: depositRef.id,
+        memberId: currentMemberId,
+        month: new Date(entryDate).getMonth() + 1,
+        year: new Date(entryDate).getFullYear(),
+        expectedAmount: 500, // Assuming static rule for now
+        paidAmount: amount,
+        status: 'Paid',
+        lateFineApplied: 0,
+        paymentDate: entryDate,
+        comment,
+        createdAt: timestamp,
+        updatedAt: timestamp,
+      }, { merge: true });
+
+      // 2. Create Transaction Ledger Entry
+      const txRef = doc(collection(db, "transactions"));
+      setDocumentNonBlocking(txRef, {
+        id: txRef.id,
+        transactionDate: entryDate,
+        transactionType: type === 'deposit' ? 'Deposit' : type === 'fine_payment' ? 'FinePayment' : 'InterestPayment',
+        amount,
+        memberId: currentMemberId,
+        memberName,
+        fundCategory: type === 'fine_payment' ? 'FineFund' : 'PrincipalFund',
+        balanceImpact: 'Credit',
+        comment,
+        createdAt: timestamp,
+        updatedAt: timestamp,
+      }, { merge: true });
+    });
 
     toast({
-      title: "Transaction recorded",
-      description: `₹${amount} has been added to ${memberName}'s account.`,
+      title: memberId === 'all' ? "Bulk transactions recorded" : "Transaction recorded",
+      description: memberId === 'all' 
+        ? `₹${amount} has been added to ${membersToProcess.length} members' accounts.`
+        : `₹${amount} has been added to ${membersToProcess[0]?.name || 'the member'}'s account.`,
     });
+    
     router.push("/transactions");
   }
 
@@ -126,6 +146,7 @@ export default function NewDepositPage() {
                       <SelectValue placeholder={membersLoading ? "Loading members..." : "Select a member"} />
                     </SelectTrigger>
                     <SelectContent>
+                      <SelectItem value="all" className="font-bold text-primary">Select All Members</SelectItem>
                       {members?.map(m => (
                         <SelectItem key={m.id} value={m.id}>
                           {m.name} ({m.id.substring(0, 6)})
