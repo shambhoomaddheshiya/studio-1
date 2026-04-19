@@ -1,4 +1,3 @@
-
 {
   "entities": {
     "Member": {
@@ -41,7 +40,6 @@
       "required": [
         "id",
         "name",
-        "mobileNumber",
         "status",
         "createdAt",
         "updatedAt"

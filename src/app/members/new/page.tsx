@@ -48,7 +48,7 @@ export default function NewMemberPage() {
     setDocumentNonBlocking(finalRef, {
       id: memberId,
       name,
-      mobileNumber: mobile,
+      mobileNumber: mobile || "",
       status: 'Active',
       creditRating: 7, // Default initial rating
       createdAt: timestamp,
@@ -120,12 +120,12 @@ export default function NewMemberPage() {
                   <Input id="name" name="name" placeholder="Enter full name" required />
                 </div>
                 <div className="grid gap-2">
-                  <Label htmlFor="mobile">Mobile Number</Label>
-                  <Input id="mobile" name="mobile" placeholder="e.g. 9876543210" required />
+                  <Label htmlFor="mobile">Mobile Number (Optional)</Label>
+                  <Input id="mobile" name="mobile" placeholder="e.g. 9876543210" />
                 </div>
                 <div className="grid gap-2">
                   <Label htmlFor="deposit">Initial Deposit Amount (₹)</Label>
-                  <Input id="deposit" name="deposit" type="number" placeholder="0" defaultValue="500" />
+                  <Input id="deposit" name="deposit" type="number" placeholder="0" defaultValue="1000" />
                 </div>
               </div>
 
