@@ -16,7 +16,8 @@ import {
   Sparkles,
   Info,
   Loader2,
-  TrendingUp
+  TrendingUp,
+  Sigma
 } from "lucide-react";
 import Link from "next/link";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
@@ -108,6 +109,11 @@ export default function MemberDetails() {
     
     return totalGlobalInterest / allMembers.length;
   }, [allTransactions, allMembers]);
+
+  // Calculate grand total of all specific components requested
+  const grandTotal = React.useMemo(() => {
+    return stats.totalDeposit + stats.totalLoanTaken + stats.currentOutstandingLoan + interestShare;
+  }, [stats, interestShare]);
 
   useEffect(() => {
     async function getAiInsight() {
@@ -226,11 +232,17 @@ export default function MemberDetails() {
                   </span>
                   <span className="font-bold text-destructive">₹{stats.currentOutstandingLoan.toLocaleString()}</span>
                 </div>
-                <div className="flex justify-between items-center text-sm pt-2 border-t">
+                <div className="flex justify-between items-center text-sm">
                   <span className="text-muted-foreground flex items-center gap-2">
                     <TrendingUp className="h-4 w-4 text-green-600" /> Interest Earned
                   </span>
                   <span className="font-bold text-green-600">₹{interestShare.toLocaleString()}</span>
+                </div>
+                <div className="flex justify-between items-center text-sm pt-4 border-t border-dashed">
+                  <span className="font-bold text-primary flex items-center gap-2">
+                    <Sigma className="h-4 w-4" /> Grand Total
+                  </span>
+                  <span className="font-extrabold text-primary text-base">₹{grandTotal.toLocaleString()}</span>
                 </div>
               </CardContent>
             </Card>
