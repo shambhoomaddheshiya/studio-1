@@ -44,6 +44,7 @@ const AiAssessmentOutputSchema = z.object({
 });
 export type AiAssessmentOutput = z.infer<typeof AiAssessmentOutputSchema>;
 
+// Define the prompt using the Genkit 1.x ai.definePrompt pattern
 const aiAssessmentPrompt = ai.definePrompt({
   name: 'aiAssessmentPrompt',
   model: 'googleai/gemini-1.5-flash',
@@ -51,22 +52,10 @@ const aiAssessmentPrompt = ai.definePrompt({
   output: { schema: AiAssessmentOutputSchema },
   config: {
     safetySettings: [
-      {
-        category: 'HARM_CATEGORY_HARASSMENT',
-        threshold: 'BLOCK_NONE',
-      },
-      {
-        category: 'HARM_CATEGORY_HATE_SPEECH',
-        threshold: 'BLOCK_NONE',
-      },
-      {
-        category: 'HARM_CATEGORY_SEXUALLY_EXPLICIT',
-        threshold: 'BLOCK_NONE',
-      },
-      {
-        category: 'HARM_CATEGORY_DANGEROUS_CONTENT',
-        threshold: 'BLOCK_NONE',
-      },
+      { category: 'HARM_CATEGORY_HARASSMENT', threshold: 'BLOCK_NONE' },
+      { category: 'HARM_CATEGORY_HATE_SPEECH', threshold: 'BLOCK_NONE' },
+      { category: 'HARM_CATEGORY_SEXUALLY_EXPLICIT', threshold: 'BLOCK_NONE' },
+      { category: 'HARM_CATEGORY_DANGEROUS_CONTENT', threshold: 'BLOCK_NONE' },
     ],
   },
   prompt: `You are the Yuva Finance 2 AI Advisor. 
@@ -77,33 +66,52 @@ Group Stats Context:
 - Active Members Count: {{context.activeMembers}}
 - Total Outstanding Loans: ₹{{context.outstandingLoans}}
 - Total Interest Earned: ₹{{context.totalInterestEarned}}
-- Current Date (Period): {{context.currentMonth}}/{{context.currentYear}}
+- Current Period: {{context.currentMonth}}/{{context.currentYear}}
 
-Detailed Data Available:
+Detailed Member Data:
+{{#if context.members}}
 - Members List: {{#each context.members}} [{{id}}] {{name}} ({{status}}) {{/each}}
+{{else}}
+- No member list available.
+{{/if}}
+
+Detailed Loan Data:
+{{#if context.activeLoans}}
 - Active Loans: {{#each context.activeLoans}} {{memberName}}: ₹{{amount}} (Outstanding: ₹{{outstanding}}) {{/each}}
-- Recent Deposits (Current Month): {{#each context.recentDeposits}} {{memberName}}: ₹{{amount}} on {{date}} {{/each}}
+{{else}}
+- No active loans currently.
+{{/if}}
+
+Detailed Payment Data (Current Month):
+{{#if context.recentDeposits}}
+- Recent Deposits: {{#each context.recentDeposits}} {{memberName}}: ₹{{amount}} on {{date}} {{/each}}
+{{else}}
+- No deposits recorded yet for this month.
+{{/if}}
 
 Instructions:
-1. If the user asks "Who hasn't paid", cross-reference the "Members List" with the "Recent Deposits" for the current month.
-2. An active member is considered to have paid if their ID or name appears in the Recent Deposits list for the current period.
-3. If they are in the "Members List" with status "Active" but NOT in the "Recent Deposits", they are overdue.
-4. If a specific member (e.g., Raju) is mentioned, look for them in the Active Loans data to provide their specific outstanding amount.
-5. If information is missing, politely inform the user.
-6. Provide professional, concise, and helpful financial insights.
+1. If the user asks "Who hasn't paid this month?", cross-reference the "Members List" with the "Recent Deposits". An active member is considered "paid" if they appear in the Recent Deposits list.
+2. If the user asks about a specific member (e.g., Raju), look for them in the "Members List" and "Active Loans".
+3. Provide professional, concise, and helpful financial advice based strictly on the provided data.
+4. If you cannot find the answer in the data, explain what is missing.
 
 User Question: {{query}}`,
 });
 
+/**
+ * Wrapper function for the AI assessment flow.
+ */
 export async function askAiAssessment(input: AiAssessmentInput): Promise<AiAssessmentOutput> {
   try {
     const { output } = await aiAssessmentPrompt(input);
     if (!output) {
-      return { answer: "I processed the request but couldn't generate a specific response. Please try rephrasing your question." };
+      throw new Error("No output generated from AI model.");
     }
     return output;
-  } catch (error) {
+  } catch (error: any) {
     console.error("AI Flow Error:", error);
-    return { answer: "I encountered a technical issue while analyzing the group data. Please ensure you have recorded some transactions first." };
+    return { 
+      answer: `I'm sorry, I encountered a technical issue while analyzing the group records: ${error.message || 'Unknown error'}. Please try again in a few moments.` 
+    };
   }
 }

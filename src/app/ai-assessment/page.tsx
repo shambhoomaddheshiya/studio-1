@@ -2,17 +2,15 @@
 
 import React, { useState, useMemo } from "react";
 import { Navbar } from "@/components/layout/Navbar";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { 
-  Sparkles, 
   Send, 
   Loader2, 
   Bot, 
   User, 
-  TrendingUp, 
   BrainCircuit
 } from "lucide-react";
 import { useFirestore, useCollection, useMemoFirebase } from "@/firebase";
@@ -29,7 +27,7 @@ export default function AiAssessmentPage() {
   const db = useFirestore();
   const [query, setQuery] = useState("");
   const [messages, setMessages] = useState<Message[]>([
-    { role: 'ai', content: "Hello! I am your Yuva Finance 2 AI Advisor. How can I help you assess your group's financial health today?" }
+    { role: 'ai', content: "Hello! I am your Yuva Finance 2 AI Advisor. You can ask me things like 'Who hasn't paid this month?' or 'How much loan does Raju have?'. How can I help you today?" }
   ]);
   const [isLoading, setIsLoading] = useState(false);
 
@@ -119,11 +117,18 @@ export default function AiAssessmentPage() {
     try {
       const result = await askAiAssessment({
         query: userMessage,
-        context: contextData || undefined
+        context: contextData || {
+          totalFunds: 0,
+          activeMembers: 0,
+          outstandingLoans: 0,
+          totalInterestEarned: 0,
+          currentMonth: new Date().getMonth() + 1,
+          currentYear: new Date().getFullYear(),
+        }
       });
       setMessages(prev => [...prev, { role: 'ai', content: result.answer }]);
     } catch (error) {
-      setMessages(prev => [...prev, { role: 'ai', content: "I encountered an error while analyzing the group records. Please try again." }]);
+      setMessages(prev => [...prev, { role: 'ai', content: "I encountered an unexpected error while communicating with the AI. Please try again." }]);
     } finally {
       setIsLoading(false);
     }
@@ -167,7 +172,7 @@ export default function AiAssessmentPage() {
                 <div className="space-y-2">
                   {[
                     "Who hasn't paid this month?",
-                    "How much loan does Raju have?",
+                    "How much loan does Rajesh Sharma have?",
                     "What is our growth this month?",
                     "Should we disburse more loans?"
                   ].map((tip, i) => (
