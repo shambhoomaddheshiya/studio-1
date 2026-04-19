@@ -110,10 +110,10 @@ export default function MemberDetails() {
     return totalGlobalInterest / allMembers.length;
   }, [allTransactions, allMembers]);
 
-  // Calculate grand total of all specific components requested
+  // Calculate grand total: (Total Deposit + Interest Earned) - Outstanding amount
   const grandTotal = React.useMemo(() => {
-    return stats.totalDeposit + stats.totalLoanTaken + stats.currentOutstandingLoan + interestShare;
-  }, [stats, interestShare]);
+    return (stats.totalDeposit + interestShare) - stats.currentOutstandingLoan;
+  }, [stats.totalDeposit, stats.currentOutstandingLoan, interestShare]);
 
   useEffect(() => {
     async function getAiInsight() {
@@ -301,12 +301,14 @@ export default function MemberDetails() {
                 ) : (
                   <Table>
                     <TableHeader>
-                      <TableRow className="bg-muted/30">
-                        <TableHead>Date</TableHead>
-                        <TableHead>Type</TableHead>
-                        <TableHead>Comment</TableHead>
-                        <TableHead className="text-right">Amount</TableHead>
-                      </TableRow>
+                      <TableHeader>
+                        <TableRow className="bg-muted/30">
+                          <TableHead>Date</TableHead>
+                          <TableHead>Type</TableHead>
+                          <TableHead>Comment</TableHead>
+                          <TableHead className="text-right">Amount</TableHead>
+                        </TableRow>
+                      </TableHeader>
                     </TableHeader>
                     <TableBody>
                       {transactions?.map((tx) => (
