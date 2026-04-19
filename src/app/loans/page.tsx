@@ -12,7 +12,7 @@ import {
 } from "@/components/ui/table";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { Plus, Loader2, MoreHorizontal, Edit, Trash2, IndianRupee, Calendar, FileText, Search, Filter } from "lucide-react";
+import { Plus, Loader2, MoreHorizontal, Edit, Trash2, IndianRupee, Calendar, FileText, Search, Filter, User } from "lucide-react";
 import Link from "next/link";
 import { Card } from "@/components/ui/card";
 import { useFirestore, useCollection, useMemoFirebase, useUser } from "@/firebase";
@@ -44,6 +44,13 @@ import {
 import { Label } from "@/components/ui/label";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
+import { 
+  Select, 
+  SelectContent, 
+  SelectItem, 
+  SelectTrigger, 
+  SelectValue 
+} from "@/components/ui/select";
 import { deleteDocumentNonBlocking, updateDocumentNonBlocking } from "@/firebase/non-blocking-updates";
 import { useToast } from "@/hooks/use-toast";
 
@@ -58,6 +65,7 @@ export default function LoansPage() {
   // Filtering state
   const [searchTerm, setSearchTerm] = useState("");
   const [statusFilter, setStatusFilter] = useState("All");
+  const [memberIdFilter, setMemberIdFilter] = useState("All");
   
   const loansRef = useMemoFirebase(() => {
     if (!db || !user) return null;
@@ -79,6 +87,7 @@ export default function LoansPage() {
     return rawLoans.filter(loan => {
       const member = members?.find(m => m.id === loan.memberId);
       const memberName = loan.isOutsiderLoan ? (loan.outsiderName || "") : (member?.name || "");
+      
       const matchesSearch = 
         memberName.toLowerCase().includes(searchTerm.toLowerCase()) ||
         loan.id.toLowerCase().includes(searchTerm.toLowerCase());
@@ -87,10 +96,14 @@ export default function LoansPage() {
         statusFilter === "All" || 
         (statusFilter === "Active" && loan.status !== "Closed") ||
         (statusFilter === "Closed" && loan.status === "Closed");
+
+      const matchesMember = 
+        memberIdFilter === "All" || 
+        loan.memberId === memberIdFilter;
       
-      return matchesSearch && matchesStatus;
+      return matchesSearch && matchesStatus && matchesMember;
     });
-  }, [rawLoans, members, searchTerm, statusFilter]);
+  }, [rawLoans, members, searchTerm, statusFilter, memberIdFilter]);
 
   const handleDelete = () => {
     if (loanToDelete && db) {
@@ -163,14 +176,30 @@ export default function LoansPage() {
         <Card className="border-none shadow-sm overflow-hidden">
           {/* Filtering UI */}
           <div className="p-4 border-b flex flex-col md:flex-row gap-4 items-center justify-between bg-white">
-            <div className="relative w-full md:max-w-md">
-              <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-              <Input 
-                placeholder="Search by member name or ID..." 
-                className="pl-10" 
-                value={searchTerm}
-                onChange={(e) => setSearchTerm(e.target.value)}
-              />
+            <div className="flex flex-col md:flex-row gap-4 w-full md:max-w-2xl">
+              <div className="relative flex-1">
+                <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                <Input 
+                  placeholder="Search by ID or custom name..." 
+                  className="pl-10" 
+                  value={searchTerm}
+                  onChange={(e) => setSearchTerm(e.target.value)}
+                />
+              </div>
+              <div className="w-full md:w-64">
+                <Select value={memberIdFilter} onValueChange={setMemberIdFilter}>
+                  <SelectTrigger className="w-full">
+                    <User className="h-4 w-4 mr-2 text-muted-foreground" />
+                    <SelectValue placeholder="Filter by Member" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="All">All Members</SelectItem>
+                    {members?.map(m => (
+                      <SelectItem key={m.id} value={m.id}>{m.name}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
             </div>
             <div className="flex items-center gap-2 w-full md:w-auto overflow-x-auto">
               <Badge 
@@ -194,11 +223,6 @@ export default function LoansPage() {
               >
                 Closed
               </Badge>
-              <div className="h-4 w-px bg-border mx-2" />
-              <Button variant="ghost" size="sm">
-                <Filter className="h-4 w-4 mr-2" />
-                Advanced
-              </Button>
             </div>
           </div>
 
@@ -288,7 +312,7 @@ export default function LoansPage() {
                   {(loans.length === 0) && !isLoading && (
                     <TableRow>
                       <TableCell colSpan={8} className="h-24 text-center text-muted-foreground">
-                        {searchTerm || statusFilter !== "All" ? "No loans match your search/filter criteria." : "No loans issued yet."}
+                        {searchTerm || statusFilter !== "All" || memberIdFilter !== "All" ? "No loans match your search/filter criteria." : "No loans issued yet."}
                       </TableCell>
                     </TableRow>
                   )}
