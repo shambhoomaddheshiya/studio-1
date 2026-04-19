@@ -44,14 +44,31 @@ const AiAssessmentOutputSchema = z.object({
 });
 export type AiAssessmentOutput = z.infer<typeof AiAssessmentOutputSchema>;
 
-export async function askAiAssessment(input: AiAssessmentInput): Promise<AiAssessmentOutput> {
-  return aiAssessmentFlow(input);
-}
-
 const aiAssessmentPrompt = ai.definePrompt({
   name: 'aiAssessmentPrompt',
+  model: 'googleai/gemini-1.5-flash',
   input: { schema: AiAssessmentInputSchema },
   output: { schema: AiAssessmentOutputSchema },
+  config: {
+    safetySettings: [
+      {
+        category: 'HARM_CATEGORY_HARASSMENT',
+        threshold: 'BLOCK_NONE',
+      },
+      {
+        category: 'HARM_CATEGORY_HATE_SPEECH',
+        threshold: 'BLOCK_NONE',
+      },
+      {
+        category: 'HARM_CATEGORY_SEXUALLY_EXPLICIT',
+        threshold: 'BLOCK_NONE',
+      },
+      {
+        category: 'HARM_CATEGORY_DANGEROUS_CONTENT',
+        threshold: 'BLOCK_NONE',
+      },
+    ],
+  },
   prompt: `You are the Yuva Finance 2 AI Advisor. 
 You help the group admin manage the community fund effectively.
 
@@ -84,7 +101,19 @@ const aiAssessmentFlow = ai.defineFlow(
     outputSchema: AiAssessmentOutputSchema,
   },
   async (input) => {
-    const { output } = await aiAssessmentPrompt(input);
-    return output!;
+    try {
+      const { output } = await aiAssessmentPrompt(input);
+      if (!output) {
+        return { answer: "I was able to process the request but couldn't generate a specific answer. Please try rephrasing." };
+      }
+      return output;
+    } catch (error: any) {
+      console.error('AI Assessment Flow Error:', error);
+      return { answer: `I encountered an error while analyzing the data: ${error.message || 'Unknown error'}. Please try again shortly.` };
+    }
   }
 );
+
+export async function askAiAssessment(input: AiAssessmentInput): Promise<AiAssessmentOutput> {
+  return aiAssessmentFlow(input);
+}
