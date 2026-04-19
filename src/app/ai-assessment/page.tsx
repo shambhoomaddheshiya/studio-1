@@ -47,6 +47,10 @@ export default function AiAssessmentPage() {
   const contextData = useMemo(() => {
     if (!allTransactions || !members || !allLoans) return null;
 
+    const now = new Date();
+    const currentMonth = now.getMonth() + 1;
+    const currentYear = now.getFullYear();
+
     const totalFunds = allTransactions.reduce((acc, tx) => {
       return tx.balanceImpact === 'Credit' ? acc + (tx.amount || 0) : acc - (tx.amount || 0);
     }, 0);
@@ -59,11 +63,49 @@ export default function AiAssessmentPage() {
       .filter(tx => tx.transactionType === 'InterestPayment')
       .reduce((acc, tx) => acc + (tx.amount || 0), 0);
 
+    // Prepare detailed data for AI
+    const membersList = members.map(m => ({
+      id: m.id,
+      name: m.name,
+      status: m.status
+    }));
+
+    const activeLoansList = allLoans
+      .filter(l => l.status === 'Active')
+      .map(l => {
+        const member = members.find(m => m.id === l.memberId);
+        return {
+          id: l.id,
+          memberId: l.memberId,
+          memberName: member?.name || "Unknown",
+          amount: l.loanAmount,
+          outstanding: (l.outstandingPrincipal || 0) + (l.outstandingInterest || 0)
+        };
+      });
+
+    const recentDepositsList = allTransactions
+      .filter(tx => {
+        if (tx.transactionType !== 'Deposit' || !tx.transactionDate) return false;
+        const d = new Date(tx.transactionDate);
+        return d.getMonth() + 1 === currentMonth && d.getFullYear() === currentYear;
+      })
+      .map(tx => ({
+        memberId: tx.memberId,
+        memberName: tx.memberName,
+        amount: tx.amount,
+        date: tx.transactionDate
+      }));
+
     return {
       totalFunds,
       activeMembers: members.length,
       outstandingLoans,
       totalInterestEarned,
+      currentMonth,
+      currentYear,
+      members: membersList,
+      activeLoans: activeLoansList,
+      recentDeposits: recentDepositsList
     };
   }, [allTransactions, members, allLoans]);
 
@@ -101,7 +143,7 @@ export default function AiAssessmentPage() {
             </div>
             <div>
               <h1 className="text-3xl font-bold tracking-tight text-primary font-headline">AI Assessment</h1>
-              <p className="text-muted-foreground text-sm">Ask insights about fund growth, member performance, or lending strategies.</p>
+              <p className="text-muted-foreground text-sm">Ask insights about fund growth, member performance, or specific balances.</p>
             </div>
           </div>
         </header>
@@ -136,10 +178,10 @@ export default function AiAssessmentPage() {
                 <p className="text-[10px] font-bold uppercase text-primary tracking-wider">Try asking:</p>
                 <div className="space-y-2">
                   {[
-                    "How is the group fund performing?",
-                    "Suggest ways to increase interest.",
-                    "Is our loan distribution safe?",
-                    "Analyze member growth."
+                    "Who hasn't paid this month?",
+                    "Does Raju have any active loans?",
+                    "What is our total outstanding amount?",
+                    "Which member has the most deposits?"
                   ].map((tip, i) => (
                     <button 
                       key={i} 
@@ -192,7 +234,7 @@ export default function AiAssessmentPage() {
                         <Loader2 className="h-4 w-4 text-accent animate-spin" />
                       </div>
                       <div className="p-3 rounded-2xl bg-slate-50 text-slate-400 text-sm border border-slate-100 italic">
-                        Thinking...
+                        Checking records...
                       </div>
                     </div>
                   )}
@@ -201,7 +243,7 @@ export default function AiAssessmentPage() {
 
               <form onSubmit={handleSend} className="p-4 bg-white border-t flex gap-2">
                 <Input 
-                  placeholder="Ask a question..." 
+                  placeholder="Ask about members, loans, or payments..." 
                   value={query} 
                   onChange={(e) => setQuery(e.target.value)}
                   disabled={isLoading}
