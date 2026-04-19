@@ -201,7 +201,9 @@ export default function MembersPage() {
                               </Link>
                             </DropdownMenuItem>
                             <DropdownMenuItem 
-                              onSelect={() => handleToggleStatus(member)}
+                              onSelect={() => {
+                                setTimeout(() => handleToggleStatus(member), 0);
+                              }}
                               className="flex items-center gap-2"
                             >
                               {member.status === 'Active' ? (
@@ -216,7 +218,12 @@ export default function MembersPage() {
                                 </>
                               )}
                             </DropdownMenuItem>
-                            <DropdownMenuItem className="text-destructive focus:text-destructive flex items-center gap-2" onSelect={() => setMemberToDelete(member)}>
+                            <DropdownMenuItem 
+                              className="text-destructive focus:text-destructive flex items-center gap-2" 
+                              onSelect={() => {
+                                setTimeout(() => setMemberToDelete(member), 0);
+                              }}
+                            >
                               <Trash2 className="h-4 w-4" />
                               Delete Member
                             </DropdownMenuItem>
@@ -239,7 +246,12 @@ export default function MembersPage() {
         </Card>
       </main>
 
-      <AlertDialog open={!!memberToDelete} onOpenChange={(open) => !open && setMemberToDelete(null)}>
+      <AlertDialog 
+        open={!!memberToDelete} 
+        onOpenChange={(open) => {
+          if (!open) setMemberToDelete(null);
+        }}
+      >
         <AlertDialogContent>
           <AlertDialogHeader>
             <AlertDialogTitle>Are you absolutely sure?</AlertDialogTitle>
