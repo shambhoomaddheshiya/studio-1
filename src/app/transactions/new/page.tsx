@@ -1,3 +1,4 @@
+
 "use client"
 
 import React, { useState } from "react";
@@ -65,7 +66,6 @@ export default function NewTransactionPage() {
     setIsSubmitting(true);
     const formData = new FormData(e.currentTarget);
     const description = formData.get('description') as string;
-    // Get loan_id from either the Select (via state or FormData)
     const loanIdForRepayment = formData.get('loan_id') as string;
     
     const selectedMember = members?.find(m => m.id === memberId);
@@ -78,6 +78,7 @@ export default function NewTransactionPage() {
       { key: 'deposit_amount', type: 'Deposit', impact: 'Credit', fund: 'PrincipalFund' },
       { key: 'interest_paid_amount', type: 'InterestPayment', impact: 'Credit', fund: 'InterestFund' },
       { key: 'repayment_amount', type: 'PrincipalRepayment', impact: 'Credit', fund: 'PrincipalFund' },
+      { key: 'fine_amount', type: 'FinePayment', impact: 'Credit', fund: 'FineFund' },
       { key: 'loan_amount', type: 'LoanDisbursement', impact: 'Debit', fund: 'PrincipalFund' },
       { key: 'expense_amount', type: 'GeneralExpense', impact: 'Debit', fund: 'OperatingFund' },
       { key: 'waived_amount', type: 'LoanWaived', impact: 'Debit', fund: 'PrincipalFund' },
@@ -86,7 +87,9 @@ export default function NewTransactionPage() {
     let recordedCount = 0;
 
     txConfigs.forEach(config => {
-      const amount = Number(formData.get(config.key));
+      const amountValue = formData.get(config.key);
+      const amount = amountValue ? Number(amountValue) : 0;
+
       if (amount > 0) {
         recordedCount++;
         const txRef = doc(collection(db, "transactions"));
@@ -102,8 +105,8 @@ export default function NewTransactionPage() {
           fundCategory: config.fund,
           balanceImpact: config.impact,
           comment: description,
-          relatedEntityId: (config.type === 'PrincipalRepayment' || config.type === 'InterestPayment') ? loanIdForRepayment : undefined,
-          relatedEntityType: (config.type === 'PrincipalRepayment' || config.type === 'InterestPayment') ? 'Loan' : undefined,
+          relatedEntityId: (config.type === 'PrincipalRepayment' || config.type === 'InterestPayment' || config.type === 'FinePayment') ? loanIdForRepayment : undefined,
+          relatedEntityType: (config.type === 'PrincipalRepayment' || config.type === 'InterestPayment' || config.type === 'FinePayment') ? 'Loan' : undefined,
           createdAt: timestamp,
           updatedAt: timestamp,
         }, { merge: true });
@@ -135,6 +138,21 @@ export default function NewTransactionPage() {
             interestPaid: amount,
             finePaid: 0,
             repaymentType: 'InterestOnly',
+            comment: description,
+            createdAt: timestamp,
+            updatedAt: timestamp,
+          }, { merge: true });
+        } else if (config.type === 'FinePayment') {
+          const repaymentRef = doc(collection(db, "repaymentEntries"));
+          setDocumentNonBlocking(repaymentRef, {
+            id: repaymentRef.id,
+            memberId,
+            loanId: loanIdForRepayment || 'unknown',
+            repaymentDate: txDate,
+            principalPaid: 0,
+            interestPaid: 0,
+            finePaid: amount,
+            repaymentType: 'FineOnly',
             comment: description,
             createdAt: timestamp,
             updatedAt: timestamp,
@@ -271,7 +289,7 @@ export default function NewTransactionPage() {
                 <div className="space-y-4 bg-slate-100/50 p-4 rounded-lg border border-slate-200">
                   <h3 className="font-semibold text-sm text-slate-900 mb-2 uppercase tracking-wider">Transaction Amounts</h3>
                   
-                  <div className="space-y-4">
+                  <div className="space-y-4 overflow-y-auto max-h-[400px] pr-2">
                     <div className="space-y-1.5">
                       <Label htmlFor="deposit_amount" className="text-xs font-bold text-slate-600">Monthly Deposit (₹)</Label>
                       <Input 
@@ -306,6 +324,17 @@ export default function NewTransactionPage() {
                     </div>
 
                     <div className="space-y-1.5">
+                      <Label htmlFor="fine_amount" className="text-xs font-bold text-slate-600">Fine Paid (₹)</Label>
+                      <Input 
+                        id="fine_amount" 
+                        name="fine_amount" 
+                        type="number" 
+                        placeholder="0" 
+                        className="bg-white border-slate-200"
+                      />
+                    </div>
+
+                    <div className="space-y-1.5">
                       <Label htmlFor="loan_id" className="text-xs font-bold text-slate-600">Loan ID (For Repayment/Interest)</Label>
                       <Select 
                         name="loan_id" 
@@ -328,9 +357,6 @@ export default function NewTransactionPage() {
                           ))}
                         </SelectContent>
                       </Select>
-                      {!loansLoading && memberId && memberLoans.length === 0 && (
-                        <p className="text-[10px] text-muted-foreground italic">No active loans found for this member.</p>
-                      )}
                     </div>
 
                     <div className="space-y-1.5">
