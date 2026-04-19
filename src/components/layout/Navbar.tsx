@@ -2,7 +2,7 @@
 
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
-import { Wallet, Users, History, LayoutDashboard, CreditCard, Banknote } from 'lucide-react';
+import { Wallet, Users, History, LayoutDashboard, CreditCard, Banknote, Sparkles } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
 const navItems = [
@@ -11,6 +11,7 @@ const navItems = [
   { name: 'Bulk Deposit', href: '/deposits', icon: Wallet },
   { name: 'Loans', href: '/loans', icon: Banknote },
   { name: 'Transactions', href: '/transactions', icon: History },
+  { name: 'AI Assessment', href: '/ai-assessment', icon: Sparkles },
 ];
 
 export function Navbar() {
