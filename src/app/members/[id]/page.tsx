@@ -133,6 +133,7 @@ export default function MemberDetails() {
         });
         setAiInsight(result);
       } catch (err) {
+        // Log to console for background debugging but don't show to user as it's handled by error emitter if it were a permission issue
         console.error("AI Insight failed", err);
       } finally {
         setLoadingAi(false);
