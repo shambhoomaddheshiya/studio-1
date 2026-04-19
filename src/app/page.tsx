@@ -10,7 +10,8 @@ import {
   ArrowUpRight, 
   History,
   Coins,
-  Loader2
+  Loader2,
+  Banknote
 } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -37,10 +38,16 @@ export default function Dashboard() {
     if (!db || !user) return null;
     return collection(db, 'members');
   }, [db, user]);
+
+  const loansQuery = useMemoFirebase(() => {
+    if (!db || !user) return null;
+    return collection(db, 'loans');
+  }, [db, user]);
   
   const { data: recentTransactions, isLoading: txLoading } = useCollection(txQuery);
   const { data: allTransactions } = useCollection(allTxQuery);
   const { data: members } = useCollection(membersQuery);
+  const { data: allLoans } = useCollection(loansQuery);
 
   if (isUserLoading) {
     return (
@@ -58,6 +65,13 @@ export default function Dashboard() {
   const totalInterest = allTransactions?.filter(tx => tx.transactionType === 'InterestPayment')
     .reduce((acc, tx) => acc + (tx.amount || 0), 0) || 0;
 
+  const totalLoanDisbursed = allTransactions?.filter(tx => tx.transactionType === 'LoanDisbursement')
+    .reduce((acc, tx) => acc + (tx.amount || 0), 0) || 0;
+
+  const outstandingLoan = allLoans?.reduce((acc, loan) => {
+    return acc + (loan.outstandingPrincipal || 0) + (loan.outstandingInterest || 0);
+  }, 0) || 0;
+
   return (
     <div className="min-h-screen flex flex-col">
       <Navbar />
@@ -69,25 +83,36 @@ export default function Dashboard() {
         </header>
 
         {/* Top Stats */}
-        <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
+        <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
           <StatCard 
             title="Total Fund Available" 
             value={`₹${totalFunds.toLocaleString()}`}
             icon={Coins}
             iconClassName="bg-blue-100 text-primary"
-            trend={{ value: 0, isPositive: true }}
           />
           <StatCard 
             title="Active Members" 
             value={members?.length || 0}
             icon={Users}
-            iconClassName="bg-aqua-100 text-accent"
+            iconClassName="bg-cyan-100 text-cyan-600"
           />
           <StatCard 
             title="Interest Earned" 
             value={`₹${totalInterest.toLocaleString()}`}
             icon={TrendingUp}
             iconClassName="bg-green-100 text-green-600"
+          />
+          <StatCard 
+            title="Outstanding Loan" 
+            value={`₹${outstandingLoan.toLocaleString()}`}
+            icon={Banknote}
+            iconClassName="bg-rose-100 text-rose-600"
+          />
+          <StatCard 
+            title="Total Loan Disbursed" 
+            value={`₹${totalLoanDisbursed.toLocaleString()}`}
+            icon={HandCoins}
+            iconClassName="bg-indigo-100 text-indigo-600"
           />
           <StatCard 
             title="Alerts" 
