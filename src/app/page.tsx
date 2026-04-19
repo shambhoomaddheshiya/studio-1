@@ -9,7 +9,6 @@ import {
   HandCoins, 
   TrendingUp, 
   AlertCircle, 
-  ArrowUpRight, 
   History,
   Coins,
   Loader2,
@@ -18,10 +17,32 @@ import {
 } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
+import { 
+  Select, 
+  SelectContent, 
+  SelectItem, 
+  SelectTrigger, 
+  SelectValue 
+} from "@/components/ui/select";
 import Link from "next/link";
 import { cn } from "@/lib/utils";
 import { useFirestore, useCollection, useMemoFirebase, useUser } from "@/firebase";
-import { collection, query, orderBy, limit } from "firebase/firestore";
+import { collection } from "firebase/firestore";
+
+const months = [
+  { value: "0", label: "January" },
+  { value: "1", label: "February" },
+  { value: "2", label: "March" },
+  { value: "3", label: "April" },
+  { value: "4", label: "May" },
+  { value: "5", label: "June" },
+  { value: "6", label: "July" },
+  { value: "7", label: "August" },
+  { value: "8", label: "September" },
+  { value: "9", label: "October" },
+  { value: "10", label: "November" },
+  { value: "11", label: "December" },
+];
 
 export default function Dashboard() {
   const db = useFirestore();
@@ -46,11 +67,8 @@ export default function Dashboard() {
   const { data: members } = useCollection(membersQuery);
   const { data: allLoans } = useCollection(loansQuery);
 
-  const [currentDate, setCurrentDate] = useState<Date | null>(null);
-
-  useEffect(() => {
-    setCurrentDate(new Date());
-  }, []);
+  const [viewMonth, setViewMonth] = useState<string>(new Date().getMonth().toString());
+  const [viewYear, setViewYear] = useState<string>(new Date().getFullYear().toString());
 
   // Global dynamic stats
   const totalFunds = useMemo(() => {
@@ -75,19 +93,34 @@ export default function Dashboard() {
     }, 0) || 0;
   }, [allLoans]);
 
-  // Monthly Overview Calculations
-  const monthlyStats = useMemo(() => {
-    if (!allTransactions || !currentDate) {
-      return { deposits: 0, loans: 0, interest: 0, recovered: 0, label: "..." };
+  // Available years for the filter
+  const availableYears = useMemo(() => {
+    const years = new Set<string>();
+    const currentYear = new Date().getFullYear();
+    years.add(currentYear.toString());
+    
+    if (allTransactions) {
+      allTransactions.forEach(tx => {
+        if (tx.transactionDate) {
+          years.add(new Date(tx.transactionDate).getFullYear().toString());
+        }
+      });
     }
-    const month = currentDate.getMonth();
-    const year = currentDate.getFullYear();
-    const label = `${currentDate.toLocaleString('default', { month: 'long' })} ${year}`;
+    return Array.from(years).sort((a, b) => b.localeCompare(a));
+  }, [allTransactions]);
+
+  // Monthly Summary Calculations
+  const monthlyStats = useMemo(() => {
+    if (!allTransactions) {
+      return { deposits: 0, loans: 0, interest: 0, recovered: 0 };
+    }
+    const m = parseInt(viewMonth);
+    const y = parseInt(viewYear);
 
     const monthlyTx = allTransactions.filter(tx => {
       if (!tx.transactionDate) return false;
       const d = new Date(tx.transactionDate);
-      return d.getMonth() === month && d.getFullYear() === year;
+      return d.getMonth() === m && d.getFullYear() === y;
     });
 
     return {
@@ -95,9 +128,8 @@ export default function Dashboard() {
       loans: monthlyTx.filter(tx => tx.transactionType === 'LoanDisbursement').reduce((acc, tx) => acc + (tx.amount || 0), 0),
       interest: monthlyTx.filter(tx => tx.transactionType === 'InterestPayment').reduce((acc, tx) => acc + (tx.amount || 0), 0),
       recovered: monthlyTx.filter(tx => tx.transactionType === 'PrincipalRepayment').reduce((acc, tx) => acc + (tx.amount || 0), 0),
-      label
     };
-  }, [allTransactions, currentDate]);
+  }, [allTransactions, viewMonth, viewYear]);
 
   if (isUserLoading) {
     return (
@@ -159,21 +191,44 @@ export default function Dashboard() {
         </div>
 
         <div className="grid gap-6 lg:grid-cols-3">
-          {/* Monthly Overview */}
+          {/* Monthly Fund Summary */}
           <Card className="lg:col-span-2 border-none shadow-sm">
-            <CardHeader className="flex flex-row items-center justify-between pb-2">
+            <CardHeader className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-2">
               <div className="flex items-center gap-2">
                 <CalendarCheck className="h-5 w-5 text-primary" />
-                <CardTitle className="text-lg">Monthly Overview</CardTitle>
+                <CardTitle className="text-lg">Monthly Fund Summary</CardTitle>
               </div>
-              <Button variant="ghost" size="sm" asChild>
-                <Link href="/transactions">View History</Link>
-              </Button>
+              <div className="flex items-center gap-2">
+                <Select value={viewMonth} onValueChange={setViewMonth}>
+                  <SelectTrigger className="w-[120px] h-8 text-xs bg-slate-50">
+                    <SelectValue placeholder="Month" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {months.map(m => (
+                      <SelectItem key={m.value} value={m.value}>{m.label}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                <Select value={viewYear} onValueChange={setViewYear}>
+                  <SelectTrigger className="w-[80px] h-8 text-xs bg-slate-50">
+                    <SelectValue placeholder="Year" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {availableYears.map(year => (
+                      <SelectItem key={year} value={year}>{year}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
             </CardHeader>
             <CardContent>
               <div className="space-y-4">
                 <div className="pb-4 border-b">
-                  <p className="text-sm font-medium text-muted-foreground">Summary for: <span className="text-primary font-bold">{monthlyStats.label}</span></p>
+                  <p className="text-sm font-medium text-muted-foreground">
+                    Summary for: <span className="text-primary font-bold">
+                      {months.find(m => m.value === viewMonth)?.label} {viewYear}
+                    </span>
+                  </p>
                 </div>
                 
                 {txLoading ? (
