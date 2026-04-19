@@ -85,19 +85,25 @@ Detailed Data Available:
 - Recent Deposits (Current Month): {{#each context.recentDeposits}} {{memberName}}: ₹{{amount}} on {{date}} {{/each}}
 
 Instructions:
-1. Use the provided detailed lists to answer specific questions about members, their loans, or their payment status.
-2. If the user asks "Who hasn't paid", cross-reference the Members List with the Recent Deposits for the current month.
-3. If a specific member (e.g., Raju) is mentioned, look for them in the Members and Loans data.
-4. If information is missing, politely inform the user.
-5. Provide professional, concise, and helpful financial insights.
+1. If the user asks "Who hasn't paid", cross-reference the "Members List" with the "Recent Deposits" for the current month.
+2. An active member is considered to have paid if their ID or name appears in the Recent Deposits list for the current period.
+3. If they are in the "Members List" with status "Active" but NOT in the "Recent Deposits", they are overdue.
+4. If a specific member (e.g., Raju) is mentioned, look for them in the Active Loans data to provide their specific outstanding amount.
+5. If information is missing, politely inform the user.
+6. Provide professional, concise, and helpful financial insights.
 
 User Question: {{query}}`,
 });
 
 export async function askAiAssessment(input: AiAssessmentInput): Promise<AiAssessmentOutput> {
-  const { output } = await aiAssessmentPrompt(input);
-  if (!output) {
-    return { answer: "I was able to process the request but couldn't generate a specific answer. Please try rephrasing." };
+  try {
+    const { output } = await aiAssessmentPrompt(input);
+    if (!output) {
+      return { answer: "I processed the request but couldn't generate a specific response. Please try rephrasing your question." };
+    }
+    return output;
+  } catch (error) {
+    console.error("AI Flow Error:", error);
+    return { answer: "I encountered a technical issue while analyzing the group data. Please ensure you have recorded some transactions first." };
   }
-  return output;
 }
