@@ -3,8 +3,6 @@
  * @fileOverview An AI assistant that generates a brief explanation for a member's credit score.
  *
  * - explainCreditScore - A function that handles the credit score explanation process.
- * - AiCreditScoreExplanationInput - The input type for the explainCreditScore function.
- * - AiCreditScoreExplanationOutput - The return type for the explainCreditScore function.
  */
 
 import { ai } from '@/ai/genkit';
@@ -29,39 +27,25 @@ const AiCreditScoreExplanationOutputSchema = z.object({
 });
 export type AiCreditScoreExplanationOutput = z.infer<typeof AiCreditScoreExplanationOutputSchema>;
 
-export async function explainCreditScore(input: AiCreditScoreExplanationInput): Promise<AiCreditScoreExplanationOutput> {
-  return aiCreditScoreExplanationFlow(input);
-}
-
 const explainCreditScorePrompt = ai.definePrompt({
   name: 'explainCreditScorePrompt',
+  model: 'googleai/gemini-1.5-flash',
   input: { schema: AiCreditScoreExplanationInputSchema },
   output: { schema: AiCreditScoreExplanationOutputSchema },
-  prompt: `You are an AI assistant for a finance group named Yuva Finance 2. Your task is to provide a brief and clear explanation of a member's credit score within the group, highlighting the most significant positive and negative factors that influenced it. Additionally, you must offer a list of actionable insights or recommendations for the member to improve their credit standing and financial behavior within the group.
+  prompt: `You are an AI assistant for a finance group named Yuva Finance 2. Provide a brief explanation of a member's credit score ({{{creditScore}}}/10).
+  
+Member Standing:
+- Deposits: ₹{{{totalDeposit}}}
+- Loans Taken: ₹{{{totalLoanTaken}}}
+- Interest Paid: ₹{{{totalInterestPaid}}}
+- Outstanding: ₹{{{currentOutstandingLoan}}}
+- Missed Payments: {{{missedPaymentsCount}}}
+- Repayment Efficiency: {{{loanRepaymentEfficiency}}}
 
-The member's credit score is: {{{creditScore}}} (on a scale of 1 to 10).
-
-Here is a summary of their financial standing within the group:
-- Member ID: {{{memberId}}}
-- Total Deposits: ₹{{{totalDeposit}}}
-- Total Loan Taken: ₹{{{totalLoanTaken}}}
-- Total Interest Paid: ₹{{{totalInterestPaid}}}
-- Total Fine Paid: ₹{{{totalFinePaid}}}
-- Current Outstanding Loan: ₹{{{currentOutstandingLoan}}}
-- Missed Payments Count: {{{missedPaymentsCount}}} (Number of times monthly deposits were missed)
-- Loan Repayment Efficiency: {{{loanRepaymentEfficiency}}}
-
-Based on this information, generate a JSON object containing the explanation and actionable insights, following the provided output schema.`,
+Explain the score and provide 3 actionable insights for improvement.`,
 });
 
-const aiCreditScoreExplanationFlow = ai.defineFlow(
-  {
-    name: 'aiCreditScoreExplanationFlow',
-    inputSchema: AiCreditScoreExplanationInputSchema,
-    outputSchema: AiCreditScoreExplanationOutputSchema,
-  },
-  async (input) => {
-    const { output } = await explainCreditScorePrompt(input);
-    return output!;
-  },
-);
+export async function explainCreditScore(input: AiCreditScoreExplanationInput): Promise<AiCreditScoreExplanationOutput> {
+  const { output } = await explainCreditScorePrompt(input);
+  return output!;
+}

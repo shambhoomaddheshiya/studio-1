@@ -94,26 +94,10 @@ Instructions:
 User Question: {{query}}`,
 });
 
-const aiAssessmentFlow = ai.defineFlow(
-  {
-    name: 'aiAssessmentFlow',
-    inputSchema: AiAssessmentInputSchema,
-    outputSchema: AiAssessmentOutputSchema,
-  },
-  async (input) => {
-    try {
-      const { output } = await aiAssessmentPrompt(input);
-      if (!output) {
-        return { answer: "I was able to process the request but couldn't generate a specific answer. Please try rephrasing." };
-      }
-      return output;
-    } catch (error: any) {
-      console.error('AI Assessment Flow Error:', error);
-      return { answer: `I encountered an error while analyzing the data: ${error.message || 'Unknown error'}. Please try again shortly.` };
-    }
-  }
-);
-
 export async function askAiAssessment(input: AiAssessmentInput): Promise<AiAssessmentOutput> {
-  return aiAssessmentFlow(input);
+  const { output } = await aiAssessmentPrompt(input);
+  if (!output) {
+    return { answer: "I was able to process the request but couldn't generate a specific answer. Please try rephrasing." };
+  }
+  return output;
 }
