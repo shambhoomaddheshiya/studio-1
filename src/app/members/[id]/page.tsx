@@ -1,4 +1,3 @@
-
 "use client"
 
 import React, { useState, useEffect } from "react";
@@ -50,6 +49,16 @@ export default function MemberDetails() {
 
   const { data: rawTransactions, isLoading: txLoading } = useCollection(transactionsRef);
 
+  const depositEntriesRef = useMemoFirebase(() => {
+    if (!db || !id || !user) return null;
+    return query(
+      collection(db, 'depositEntries'),
+      where('memberId', '==', id)
+    );
+  }, [db, id, user]);
+
+  const { data: memberDeposits } = useCollection(depositEntriesRef);
+
   // Global data for interest share calculation
   const allMembersRef = useMemoFirebase(() => collection(db, 'members'), [db]);
   const { data: allMembers } = useCollection(allMembersRef);
@@ -69,6 +78,42 @@ export default function MemberDetails() {
 
   const [aiInsight, setAiInsight] = useState<AiCreditScoreExplanationOutput | null>(null);
   const [loadingAi, setLoadingAi] = useState(false);
+
+  // Dynamic Credit Score Calculation
+  const calculatedCreditScore = React.useMemo(() => {
+    if (!member) return 10;
+    
+    const now = new Date();
+    const joinedDate = new Date(member.createdAt);
+    let missedCount = 0;
+    
+    // Check 6 months prior to current month
+    for (let i = 1; i <= 6; i++) {
+      const checkDate = new Date(now.getFullYear(), now.getMonth() - i, 1);
+      const m = checkDate.getMonth() + 1;
+      const y = checkDate.getFullYear();
+      
+      // Only count months where they were already a member
+      const joinedMonthStart = new Date(joinedDate.getFullYear(), joinedDate.getMonth(), 1);
+      if (checkDate < joinedMonthStart) continue;
+
+      const isPaid = memberDeposits?.some(entry => 
+        entry.month === m && 
+        entry.year === y && 
+        entry.status === 'Paid'
+      );
+
+      if (!isPaid) {
+        missedCount++;
+      }
+    }
+
+    if (missedCount === 0) return 10;
+    if (missedCount === 1) return 9;
+    if (missedCount === 2) return 7;
+    if (missedCount >= 3) return 5;
+    return 10;
+  }, [member, memberDeposits]);
 
   // Calculate statistics from live transactions
   const stats = React.useMemo(() => {
@@ -122,18 +167,17 @@ export default function MemberDetails() {
       try {
         const result = await explainCreditScore({
           memberId: id,
-          creditScore: member.creditRating || 7,
+          creditScore: calculatedCreditScore,
           totalDeposit: stats.totalDeposit,
           totalLoanTaken: stats.totalLoanTaken,
           totalInterestPaid: stats.totalInterestPaid,
           totalFinePaid: stats.totalFinePaid,
           currentOutstandingLoan: stats.currentOutstandingLoan,
           missedPaymentsCount: 0,
-          loanRepaymentEfficiency: 'average'
+          loanRepaymentEfficiency: calculatedCreditScore >= 9 ? 'excellent' : calculatedCreditScore >= 7 ? 'good' : 'average'
         });
         setAiInsight(result);
       } catch (err) {
-        // Log to console for background debugging but don't show to user as it's handled by error emitter if it were a permission issue
         console.error("AI Insight failed", err);
       } finally {
         setLoadingAi(false);
@@ -142,7 +186,7 @@ export default function MemberDetails() {
     if (member && transactions && transactions.length > 0) {
       getAiInsight();
     }
-  }, [member, transactions, id, stats]);
+  }, [member, transactions, id, stats, calculatedCreditScore]);
 
   if (isUserLoading) {
     return (
@@ -203,9 +247,10 @@ export default function MemberDetails() {
               <CardContent className="pt-6">
                 <div className="flex flex-col items-center text-center">
                   <div className="relative flex items-center justify-center w-24 h-24 rounded-full border-4 border-accent/20">
-                    <span className="text-3xl font-bold text-primary">{member?.creditRating || 7}</span>
+                    <span className="text-3xl font-bold text-primary">{calculatedCreditScore}</span>
                   </div>
-                  <p className="mt-2 text-sm text-muted-foreground">Group Credit Rating</p>
+                  <p className="mt-2 text-sm text-muted-foreground">Dynamic Credit Rating</p>
+                  <p className="text-[10px] text-muted-foreground mt-1">(Scale 1-10 based on 6M history)</p>
                 </div>
               </CardContent>
             </Card>

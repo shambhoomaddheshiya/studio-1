@@ -50,7 +50,7 @@ export default function NewMemberPage() {
       name,
       mobileNumber: mobile || "",
       status: 'Active',
-      creditRating: 7, // Default initial rating
+      creditRating: 10, // Default initial rating as per new rules
       createdAt: timestamp,
       updatedAt: timestamp,
     }, { merge: true });

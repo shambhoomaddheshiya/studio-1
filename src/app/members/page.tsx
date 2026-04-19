@@ -1,4 +1,3 @@
-
 "use client"
 
 import React, { useState } from "react";
@@ -61,6 +60,48 @@ export default function MembersPage() {
   }, [db, user]);
 
   const { data: rawMembers, isLoading } = useCollection(membersRef);
+
+  const depositEntriesRef = useMemoFirebase(() => {
+    if (!db || !user) return null;
+    return collection(db, 'depositEntries');
+  }, [db, user]);
+
+  const { data: allDeposits } = useCollection(depositEntriesRef);
+
+  const calculateDynamicScore = (member: any) => {
+    if (!member) return 10;
+    
+    const now = new Date();
+    const joinedDate = new Date(member.createdAt);
+    let missedCount = 0;
+    
+    // Check 6 months prior to current month
+    for (let i = 1; i <= 6; i++) {
+      const checkDate = new Date(now.getFullYear(), now.getMonth() - i, 1);
+      const m = checkDate.getMonth() + 1;
+      const y = checkDate.getFullYear();
+      
+      const joinedMonthStart = new Date(joinedDate.getFullYear(), joinedDate.getMonth(), 1);
+      if (checkDate < joinedMonthStart) continue;
+
+      const isPaid = allDeposits?.some(entry => 
+        entry.memberId === member.id &&
+        entry.month === m && 
+        entry.year === y && 
+        entry.status === 'Paid'
+      );
+
+      if (!isPaid) {
+        missedCount++;
+      }
+    }
+
+    if (missedCount === 0) return 10;
+    if (missedCount === 1) return 9;
+    if (missedCount === 2) return 7;
+    if (missedCount >= 3) return 5;
+    return 10;
+  };
 
   const members = React.useMemo(() => {
     if (!rawMembers) return [];
@@ -164,74 +205,85 @@ export default function MembersPage() {
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {members.map((member) => (
-                    <TableRow key={member.id} className="hover:bg-muted/30 transition-colors">
-                      <TableCell className="font-mono text-xs font-bold text-primary">
-                        {member.id}
-                      </TableCell>
-                      <TableCell className="font-medium">
-                        <Link href={`/members/${member.id}`} className="hover:text-accent transition-colors">
-                          {member.name}
-                        </Link>
-                      </TableCell>
-                      <TableCell className="text-muted-foreground text-sm">{member.mobileNumber}</TableCell>
-                      <TableCell>
-                        <Badge variant={member.status === 'Active' ? 'default' : 'secondary'} className={member.status === 'Active' ? 'bg-green-100 text-green-700 hover:bg-green-100' : ''}>
-                          {member.status}
-                        </Badge>
-                      </TableCell>
-                      <TableCell className="text-right font-medium">
-                        {member.creditRating || '-'} / 10
-                      </TableCell>
-                      <TableCell className="text-right">
-                        <DropdownMenu>
-                          <DropdownMenuTrigger asChild>
-                            <Button variant="ghost" size="icon">
-                              <MoreHorizontal className="h-4 w-4" />
-                            </Button>
-                          </DropdownMenuTrigger>
-                          <DropdownMenuContent align="end">
-                            <DropdownMenuItem asChild>
-                              <Link href={`/members/${member.id}`}>View Passbook</Link>
-                            </DropdownMenuItem>
-                            <DropdownMenuItem asChild>
-                              <Link href={`/members/${member.id}/edit`} className="flex items-center gap-2">
-                                <Edit className="h-4 w-4" />
-                                Edit Profile
-                              </Link>
-                            </DropdownMenuItem>
-                            <DropdownMenuItem 
-                              onSelect={() => {
-                                setTimeout(() => handleToggleStatus(member), 0);
-                              }}
-                              className="flex items-center gap-2"
-                            >
-                              {member.status === 'Active' ? (
-                                <>
-                                  <UserX className="h-4 w-4" />
-                                  Deactivate Member
-                                </>
-                              ) : (
-                                <>
-                                  <UserCheck className="h-4 w-4" />
-                                  Activate Member
-                                </>
-                              )}
-                            </DropdownMenuItem>
-                            <DropdownMenuItem 
-                              className="text-destructive focus:text-destructive flex items-center gap-2" 
-                              onSelect={() => {
-                                setTimeout(() => setMemberToDelete(member), 0);
-                              }}
-                            >
-                              <Trash2 className="h-4 w-4" />
-                              Delete Member
-                            </DropdownMenuItem>
-                          </DropdownMenuContent>
-                        </DropdownMenu>
-                      </TableCell>
-                    </TableRow>
-                  ))}
+                  {members.map((member) => {
+                    const dynamicScore = calculateDynamicScore(member);
+                    return (
+                      <TableRow key={member.id} className="hover:bg-muted/30 transition-colors">
+                        <TableCell className="font-mono text-xs font-bold text-primary">
+                          {member.id}
+                        </TableCell>
+                        <TableCell className="font-medium">
+                          <Link href={`/members/${member.id}`} className="hover:text-accent transition-colors">
+                            {member.name}
+                          </Link>
+                        </TableCell>
+                        <TableCell className="text-muted-foreground text-sm">{member.mobileNumber}</TableCell>
+                        <TableCell>
+                          <Badge variant={member.status === 'Active' ? 'default' : 'secondary'} className={member.status === 'Active' ? 'bg-green-100 text-green-700 hover:bg-green-100' : ''}>
+                            {member.status}
+                          </Badge>
+                        </TableCell>
+                        <TableCell className="text-right font-medium">
+                          <div className="flex flex-col items-end">
+                            <span className={cn(
+                              "font-bold",
+                              dynamicScore >= 9 ? "text-green-600" : dynamicScore >= 7 ? "text-orange-500" : "text-destructive"
+                            )}>
+                              {dynamicScore} / 10
+                            </span>
+                            <span className="text-[10px] text-muted-foreground">Dynamic</span>
+                          </div>
+                        </TableCell>
+                        <TableCell className="text-right">
+                          <DropdownMenu>
+                            <DropdownMenuTrigger asChild>
+                              <Button variant="ghost" size="icon">
+                                <MoreHorizontal className="h-4 w-4" />
+                              </Button>
+                            </DropdownMenuTrigger>
+                            <DropdownMenuContent align="end">
+                              <DropdownMenuItem asChild>
+                                <Link href={`/members/${member.id}`}>View Passbook</Link>
+                              </DropdownMenuItem>
+                              <DropdownMenuItem asChild>
+                                <Link href={`/members/${member.id}/edit`} className="flex items-center gap-2">
+                                  <Edit className="h-4 w-4" />
+                                  Edit Profile
+                                </Link>
+                              </DropdownMenuItem>
+                              <DropdownMenuItem 
+                                onSelect={() => {
+                                  setTimeout(() => handleToggleStatus(member), 0);
+                                }}
+                                className="flex items-center gap-2"
+                              >
+                                {member.status === 'Active' ? (
+                                  <>
+                                    <UserX className="h-4 w-4" />
+                                    Deactivate Member
+                                  </>
+                                ) : (
+                                  <>
+                                    <UserCheck className="h-4 w-4" />
+                                    Activate Member
+                                  </>
+                                )}
+                              </DropdownMenuItem>
+                              <DropdownMenuItem 
+                                className="text-destructive focus:text-destructive flex items-center gap-2" 
+                                onSelect={() => {
+                                  setTimeout(() => setMemberToDelete(member), 0);
+                                }}
+                              >
+                                <Trash2 className="h-4 w-4" />
+                                Delete Member
+                              </DropdownMenuItem>
+                            </DropdownMenuContent>
+                          </DropdownMenu>
+                        </TableCell>
+                      </TableRow>
+                    );
+                  })}
                   {(members.length === 0) && (
                     <TableRow>
                       <TableCell colSpan={6} className="h-24 text-center text-muted-foreground">
