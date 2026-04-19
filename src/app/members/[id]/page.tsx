@@ -1,3 +1,4 @@
+
 "use client"
 
 import React, { useState, useEffect } from "react";
@@ -14,7 +15,8 @@ import {
   ShieldCheck, 
   Sparkles,
   Info,
-  Loader2
+  Loader2,
+  TrendingUp
 } from "lucide-react";
 import Link from "next/link";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
@@ -39,8 +41,6 @@ export default function MemberDetails() {
 
   const transactionsRef = useMemoFirebase(() => {
     if (!db || !id || !user) return null;
-    // Query transactions for this specific member. 
-    // Removed orderBy to ensure it works without composite indexes for now.
     return query(
       collection(db, 'transactions'),
       where('memberId', '==', id)
@@ -48,6 +48,13 @@ export default function MemberDetails() {
   }, [db, id, user]);
 
   const { data: rawTransactions, isLoading: txLoading } = useCollection(transactionsRef);
+
+  // Global data for interest share calculation
+  const allMembersRef = useMemoFirebase(() => collection(db, 'members'), [db]);
+  const { data: allMembers } = useCollection(allMembersRef);
+
+  const allTransactionsRef = useMemoFirebase(() => collection(db, 'transactions'), [db]);
+  const { data: allTransactions } = useCollection(allTransactionsRef);
   
   // Sort transactions manually in client-side to ensure descending order by date
   const transactions = React.useMemo(() => {
@@ -91,6 +98,16 @@ export default function MemberDetails() {
       currentOutstandingLoan: 0
     });
   }, [transactions]);
+
+  // Calculate global interest share
+  const interestShare = React.useMemo(() => {
+    if (!allTransactions || !allMembers || allMembers.length === 0) return 0;
+    const totalGlobalInterest = allTransactions
+      .filter(tx => tx.transactionType === 'InterestPayment')
+      .reduce((acc, tx) => acc + (tx.amount || 0), 0);
+    
+    return totalGlobalInterest / allMembers.length;
+  }, [allTransactions, allMembers]);
 
   useEffect(() => {
     async function getAiInsight() {
@@ -208,6 +225,12 @@ export default function MemberDetails() {
                     <Info className="h-4 w-4" /> Outstanding
                   </span>
                   <span className="font-bold text-destructive">₹{stats.currentOutstandingLoan.toLocaleString()}</span>
+                </div>
+                <div className="flex justify-between items-center text-sm pt-2 border-t">
+                  <span className="text-muted-foreground flex items-center gap-2">
+                    <TrendingUp className="h-4 w-4 text-green-600" /> Interest Earned
+                  </span>
+                  <span className="font-bold text-green-600">₹{interestShare.toLocaleString()}</span>
                 </div>
               </CardContent>
             </Card>
