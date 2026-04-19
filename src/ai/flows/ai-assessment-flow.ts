@@ -53,7 +53,7 @@ const aiAssessmentFlow = ai.defineFlow(
     outputSchema: AiAssessmentOutputSchema,
   },
   async (input) => {
-    const { output } = await ai.generate({
+    const response = await ai.generate({
       prompt: `You are the Yuva Finance 2 AI Advisor. 
       You help the group admin manage the community fund effectively.
       
@@ -79,6 +79,6 @@ const aiAssessmentFlow = ai.defineFlow(
       
       User Question: ${input.query}`,
     });
-    return { answer: output?.text || 'I am sorry, I could not generate a response.' };
+    return { answer: response.text || 'I am sorry, I could not generate a response.' };
   }
 );
