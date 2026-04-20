@@ -22,7 +22,7 @@ export type AiTransactionCommentAssistantOutput = z.infer<typeof AiTransactionCo
 
 const commentPrompt = ai.definePrompt({
   name: 'commentPrompt',
-  model: 'googleai/gemini-1.5-flash',
+  model: 'googleai/gemini-2.0-flash',
   input: { schema: AiTransactionCommentAssistantInputSchema },
   prompt: `You are a meticulous bookkeeper. Generate very short, professional ledger comments.
 Generate a concise (max 8 words) ledger comment for a {{transactionType}} of ₹{{amount}} by {{memberName}}.`,
