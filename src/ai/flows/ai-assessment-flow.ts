@@ -98,13 +98,24 @@ Instructions:
 User Question: {{query}}`,
 });
 
+const aiAssessmentFlow = ai.defineFlow(
+  {
+    name: 'aiAssessmentFlow',
+    inputSchema: AiAssessmentInputSchema,
+    outputSchema: AiAssessmentOutputSchema,
+  },
+  async (input) => {
+    const { output } = await aiAssessmentPrompt(input);
+    if (!output) {
+      throw new Error("No output generated from AI model.");
+    }
+    return output;
+  }
+);
+
 /**
  * Wrapper function for the AI assessment flow.
  */
 export async function askAiAssessment(input: AiAssessmentInput): Promise<AiAssessmentOutput> {
-  const { output } = await aiAssessmentPrompt(input);
-  if (!output) {
-    throw new Error("No output generated from AI model.");
-  }
-  return output;
+  return aiAssessmentFlow(input);
 }

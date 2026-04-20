@@ -28,7 +28,21 @@ const commentPrompt = ai.definePrompt({
   prompt: `Generate a concise (max 10 words) and professional ledger comment for a {{transactionType}} of ₹{{amount}} for {{memberName}}.`,
 });
 
+const aiTransactionCommentAssistantFlow = ai.defineFlow(
+  {
+    name: 'aiTransactionCommentAssistantFlow',
+    inputSchema: AiTransactionCommentAssistantInputSchema,
+    outputSchema: AiTransactionCommentAssistantOutputSchema,
+  },
+  async (input) => {
+    const { output } = await commentPrompt(input);
+    if (!output) {
+      throw new Error("No output generated from AI model.");
+    }
+    return output;
+  }
+);
+
 export async function aiTransactionCommentAssistant(input: AiTransactionCommentAssistantInput): Promise<AiTransactionCommentAssistantOutput> {
-  const { output } = await commentPrompt(input);
-  return output!;
+  return aiTransactionCommentAssistantFlow(input);
 }
