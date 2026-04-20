@@ -102,16 +102,9 @@ User Question: {{query}}`,
  * Wrapper function for the AI assessment flow.
  */
 export async function askAiAssessment(input: AiAssessmentInput): Promise<AiAssessmentOutput> {
-  try {
-    const { output } = await aiAssessmentPrompt(input);
-    if (!output) {
-      throw new Error("No output generated from AI model.");
-    }
-    return output;
-  } catch (error: any) {
-    console.error("AI Flow Error:", error);
-    return { 
-      answer: `I'm sorry, I encountered a technical issue while analyzing the group records: ${error.message || 'Unknown error'}. Please try again in a few moments.` 
-    };
+  const { output } = await aiAssessmentPrompt(input);
+  if (!output) {
+    throw new Error("No output generated from AI model.");
   }
+  return output;
 }
