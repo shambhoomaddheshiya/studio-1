@@ -14,6 +14,7 @@ const AiCreditScoreExplanationInputSchema = z.object({
   totalDeposit: z.number().min(0).describe('The total amount of money deposited by the member.'),
   totalLoanTaken: z.number().min(0).describe('The total amount of loans taken by the member.'),
   totalInterestPaid: z.number().min(0).describe('The total amount of interest paid by the member on loans.'),
+  totalLoanRepaid: z.number().min(0).optional().describe('The total principal amount repaid by the member.'),
   totalFinePaid: z.number().min(0).describe('The total amount of fines paid by the member.'),
   currentOutstandingLoan: z.number().min(0).describe('The current outstanding balance of all loans for the member.'),
   missedPaymentsCount: z.number().min(0).describe('The number of missed monthly deposit payments.'),
@@ -29,7 +30,7 @@ export type AiCreditScoreExplanationOutput = z.infer<typeof AiCreditScoreExplana
 
 const explainCreditScorePrompt = ai.definePrompt({
   name: 'explainCreditScorePrompt',
-  model: 'googleai/gemini-2.0-flash',
+  model: 'googleai/gemini-1.5-flash',
   input: { schema: AiCreditScoreExplanationInputSchema },
   prompt: `You are a financial analyst for Yuva Finance 2. Explain credit scores based on group-specific contribution and repayment data.
 
@@ -58,7 +59,6 @@ const explainCreditScoreFlow = ai.defineFlow(
       const { text } = await explainCreditScorePrompt(input);
       if (!text) throw new Error("AI response was empty.");
       
-      // Basic extraction if the model returns markdown or text around JSON
       const jsonMatch = text.match(/\{[\s\S]*\}/);
       if (jsonMatch) {
         return JSON.parse(jsonMatch[0]);
