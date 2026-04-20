@@ -87,7 +87,7 @@ export default function AiAssessmentPage() {
       })
       .map(tx => ({
         memberId: tx.memberId,
-        memberName: tx.memberName,
+        memberName: tx.memberName || members.find(m => m.id === tx.memberId)?.name || "Unknown",
         amount: tx.amount,
         date: tx.transactionDate
       }));
@@ -172,7 +172,7 @@ export default function AiAssessmentPage() {
                 <div className="space-y-2">
                   {[
                     "Who hasn't paid this month?",
-                    "How much loan does Rajesh Sharma have?",
+                    "How much loan does Raju have?",
                     "What is our growth this month?",
                     "Should we disburse more loans?"
                   ].map((tip, i) => (

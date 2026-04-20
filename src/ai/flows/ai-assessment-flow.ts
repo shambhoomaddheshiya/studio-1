@@ -44,7 +44,6 @@ const AiAssessmentOutputSchema = z.object({
 });
 export type AiAssessmentOutput = z.infer<typeof AiAssessmentOutputSchema>;
 
-// Define the prompt using the Genkit 1.x ai.definePrompt pattern
 const aiAssessmentPrompt = ai.definePrompt({
   name: 'aiAssessmentPrompt',
   model: 'googleai/gemini-1.5-flash',
@@ -90,8 +89,8 @@ Detailed Payment Data (Current Month):
 {{/if}}
 
 Instructions:
-1. If the user asks "Who hasn't paid this month?", cross-reference the "Members List" with the "Recent Deposits". An active member is considered "paid" if they appear in the Recent Deposits list.
-2. If the user asks about a specific member (e.g., Raju), look for them in the "Members List" and "Active Loans".
+1. If the user asks "Who hasn't paid this month?", cross-reference the "Members List" with the "Recent Deposits". An active member is considered "paid" if they appear in the Recent Deposits list. List names clearly.
+2. If the user asks about a specific person (e.g., Raju), look for them in the "Members List". If found, report their status and check "Active Loans" for any outstanding debt.
 3. Provide professional, concise, and helpful financial advice based strictly on the provided data.
 4. If you cannot find the answer in the data, explain what is missing.
 
@@ -105,17 +104,19 @@ const aiAssessmentFlow = ai.defineFlow(
     outputSchema: AiAssessmentOutputSchema,
   },
   async (input) => {
-    const { output } = await aiAssessmentPrompt(input);
-    if (!output) {
-      throw new Error("No output generated from AI model.");
+    try {
+      const { output } = await aiAssessmentPrompt(input);
+      if (!output) {
+        return { answer: "I'm sorry, I couldn't generate an answer based on the current data. Please ensure your records are up to date." };
+      }
+      return output;
+    } catch (err: any) {
+      console.error("Genkit Flow Error:", err);
+      return { answer: `I encountered a technical issue while analyzing the group records: ${err.message}. Please try again in a few moments.` };
     }
-    return output;
   }
 );
 
-/**
- * Wrapper function for the AI assessment flow.
- */
 export async function askAiAssessment(input: AiAssessmentInput): Promise<AiAssessmentOutput> {
   return aiAssessmentFlow(input);
 }

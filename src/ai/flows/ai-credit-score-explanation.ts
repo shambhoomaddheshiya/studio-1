@@ -52,11 +52,19 @@ const explainCreditScoreFlow = ai.defineFlow(
     outputSchema: AiCreditScoreExplanationOutputSchema,
   },
   async (input) => {
-    const { output } = await explainCreditScorePrompt(input);
-    if (!output) {
-      throw new Error("No output generated from AI model.");
+    try {
+      const { output } = await explainCreditScorePrompt(input);
+      if (!output) {
+        throw new Error("No output generated from AI model.");
+      }
+      return output;
+    } catch (err: any) {
+      console.error("Credit Score Insight Error:", err);
+      return { 
+        explanation: "Unable to analyze credit score at this time due to a system error.",
+        actionableInsights: ["Check your payment history manually.", "Ensure all deposits are recorded."]
+      };
     }
-    return output;
   }
 );
 
