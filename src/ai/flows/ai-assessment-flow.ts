@@ -1,12 +1,12 @@
+
 'use server';
 /**
  * @fileOverview An AI assistant that provides assessments and insights for the finance group.
- *
- * - askAiAssessment - A function that handles general group analysis and Q&A.
+ * Direct fetch implementation for Vercel compatibility.
  */
 
-import { ai } from '@/ai/genkit';
-import { z } from 'genkit';
+import { z } from 'zod';
+import Handlebars from 'handlebars';
 
 const AiAssessmentInputSchema = z.object({
   query: z.string().describe('The user\'s question or request for insight.'),
@@ -39,16 +39,11 @@ const AiAssessmentInputSchema = z.object({
 });
 export type AiAssessmentInput = z.infer<typeof AiAssessmentInputSchema>;
 
-const AiAssessmentOutputSchema = z.object({
-  answer: z.string().describe('The AI\'s response providing insights or answers.'),
-});
-export type AiAssessmentOutput = z.infer<typeof AiAssessmentOutputSchema>;
+export type AiAssessmentOutput = {
+  answer: string;
+};
 
-const aiAssessmentPrompt = ai.definePrompt({
-  name: 'aiAssessmentPrompt',
-  model: 'googleai/gemini-2.0-flash',
-  input: { schema: AiAssessmentInputSchema },
-  prompt: `You are the Yuva Finance 2 AI Advisor. 
+const PROMPT_TEMPLATE = `You are the Yuva Finance 2 AI Advisor. 
 Your job is to provide accurate financial insights and member status reports based on the provided group context data.
 
 CRITICAL INSTRUCTIONS:
@@ -94,26 +89,57 @@ DEPOSITS PAID (THIS MONTH):
 Note: No specific group context was provided. Please answer based on general principles.
 {{/if}}
 
-User Query: {{query}}`,
-});
-
-const aiAssessmentFlow = ai.defineFlow(
-  {
-    name: 'aiAssessmentFlow',
-    inputSchema: AiAssessmentInputSchema,
-    outputSchema: AiAssessmentOutputSchema,
-  },
-  async (input) => {
-    try {
-      const { text } = await aiAssessmentPrompt(input);
-      return { answer: text || "I'm sorry, I couldn't process that request right now." };
-    } catch (err: any) {
-      console.error('Genkit flow error:', err);
-      return { answer: "Technical Issue: I encountered an error while communicating with the AI. This usually happens if the server timeout is reached or the API key is invalid." };
-    }
-  }
-);
+User Query: {{query}}`;
 
 export async function askAiAssessment(input: AiAssessmentInput): Promise<AiAssessmentOutput> {
-  return aiAssessmentFlow(input);
+  try {
+    const template = Handlebars.compile(PROMPT_TEMPLATE);
+    const promptText = template(input);
+
+    const apiKey = process.env.GEMINI_API_KEY || process.env.GOOGLE_GENAI_API_KEY;
+    if (!apiKey) {
+      return { answer: "Configuration Error: GEMINI_API_KEY is not set in the environment variables." };
+    }
+
+    const response = await fetch(
+      `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${apiKey}`,
+      {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          contents: [
+            {
+              parts: [{ text: promptText }],
+            },
+          ],
+          generationConfig: {
+            temperature: 0.7,
+            topK: 40,
+            topP: 0.95,
+            maxOutputTokens: 2048,
+          },
+        }),
+      }
+    );
+
+    if (!response.ok) {
+      const errorData = await response.json().catch(() => ({}));
+      console.error('Gemini API fetch error:', errorData);
+      return { answer: `Technical Issue: The AI service returned an error (${response.status}). Please check your API key and network connectivity.` };
+    }
+
+    const data = await response.json();
+    const answer = data.candidates?.[0]?.content?.parts?.[0]?.text;
+
+    if (!answer) {
+      return { answer: "I'm sorry, the AI returned an empty response. Please try again with a different query." };
+    }
+
+    return { answer };
+  } catch (err: any) {
+    console.error('askAiAssessment error:', err);
+    return { answer: "Technical Issue: I encountered an unexpected error while processing your request. Details: " + (err.message || 'Unknown error') };
+  }
 }
