@@ -62,21 +62,21 @@ Group Stats Summary:
 
 Detailed Member Records:
 {{#if context.members}}
-- Members List: {{#each context.members}} [ID: {{this.id}}] {{this.name}} (Status: {{this.status}}) {{/each}}
+- Members List: {{#each context.members}} [ID: {{{this.id}}}] {{{this.name}}} (Status: {{{this.status}}}) {{/each}}
 {{else}}
 - No member list provided.
 {{/if}}
 
 Detailed Loan Records:
 {{#if context.activeLoans}}
-- Active Loans: {{#each context.activeLoans}} Member: {{this.memberName}} (ID: {{this.memberId}}), Amount: ₹{{this.amount}}, Outstanding: ₹{{this.outstanding}} {{/each}}
+- Active Loans: {{#each context.activeLoans}} Member: {{{this.memberName}}} (ID: {{{this.memberId}}}), Amount: ₹{{this.amount}}, Outstanding: ₹{{this.outstanding}} {{/each}}
 {{else}}
 - No active loans recorded.
 {{/if}}
 
 Detailed Payment Records (This Month):
 {{#if context.recentDeposits}}
-- Deposits Paid: {{#each context.recentDeposits}} Member: {{this.memberName}}, Amount: ₹{{this.amount}}, Date: {{this.date}} {{/each}}
+- Deposits Paid: {{#each context.recentDeposits}} Member: {{{this.memberName}}}, Amount: ₹{{this.amount}}, Date: {{{this.date}}} {{/each}}
 {{else}}
 - No deposits recorded yet for the current month.
 {{/if}}
@@ -86,7 +86,7 @@ No group context data available. Please base your response on general financial 
 
 Instructions:
 1. Identify Persons: If a user asks about a specific person (e.g., "Raju"), search for their name in the records provided. Report their status and check the loans list for any money they owe.
-2. Track Non-Payments: If asked "Who hasn't paid?", compare the active member list with the deposits list.
+2. Track Non-Payments: If asked "Who hasn't paid?", compare the active member list with the deposits list. Only members in the "Members List" who do NOT appear in the "Deposits Paid" list for the current month should be flagged as unpaid.
 3. Financial Growth: Provide advice based on total funds and outstanding loans.
 4. Tone: Be professional, concise, and community-focused.
 
