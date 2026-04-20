@@ -18,6 +18,9 @@ import { collection } from "firebase/firestore";
 import { askAiAssessment } from "@/ai/flows/ai-assessment-flow";
 import { cn } from "@/lib/utils";
 
+// Increase timeout for long-running AI operations on Vercel
+export const maxDuration = 60;
+
 interface Message {
   role: 'user' | 'ai';
   content: string;
@@ -127,8 +130,8 @@ export default function AiAssessmentPage() {
         }
       });
       setMessages(prev => [...prev, { role: 'ai', content: result.answer }]);
-    } catch (error) {
-      setMessages(prev => [...prev, { role: 'ai', content: "I encountered an unexpected error while communicating with the AI. Please try again." }]);
+    } catch (error: any) {
+      setMessages(prev => [...prev, { role: 'ai', content: "I encountered an unexpected error while communicating with the AI. This usually happens if the server timeout is reached or the API key is invalid. Details: " + (error.message || 'Unknown error') }]);
     } finally {
       setIsLoading(false);
     }

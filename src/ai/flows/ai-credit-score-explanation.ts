@@ -58,6 +58,7 @@ const explainCreditScoreFlow = ai.defineFlow(
       if (!output) throw new Error("AI response was empty.");
       return output;
     } catch (err: any) {
+      console.error('Credit score AI error:', err);
       return { 
         explanation: `Analysis currently unavailable: ${err.message}`,
         actionableInsights: ["Manually review transaction history.", "Check for missed monthly deposits."]

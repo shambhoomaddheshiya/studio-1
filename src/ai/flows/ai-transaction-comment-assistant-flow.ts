@@ -40,6 +40,7 @@ const aiTransactionCommentAssistantFlow = ai.defineFlow(
       const { output } = await commentPrompt(input);
       return output || { suggestedComment: "Transaction recorded." };
     } catch (err: any) {
+      console.error('Comment assistant AI error:', err);
       return { suggestedComment: "Ledger entry updated." };
     }
   }

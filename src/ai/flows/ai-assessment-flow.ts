@@ -109,7 +109,8 @@ const aiAssessmentFlow = ai.defineFlow(
       const { output } = await aiAssessmentPrompt(input);
       return output || { answer: "I'm sorry, I couldn't process that request right now." };
     } catch (err: any) {
-      return { answer: `Technical Issue: ${err.message}. Please ensure the AI configuration is correct.` };
+      console.error('Genkit flow error:', err);
+      return { answer: `Technical Issue: ${err.message}. Please check if GEMINI_API_KEY is correctly set in your Vercel project environment variables.` };
     }
   }
 );
