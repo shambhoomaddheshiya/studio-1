@@ -5,7 +5,7 @@
  * - explainCreditScore - A function that handles the credit score explanation process.
  */
 
-import { ai } from '@/ai/genkit';
+import { ai, googleAIPlugin } from '@/ai/genkit';
 import { z } from 'genkit';
 
 const AiCreditScoreExplanationInputSchema = z.object({
@@ -29,7 +29,7 @@ export type AiCreditScoreExplanationOutput = z.infer<typeof AiCreditScoreExplana
 
 const explainCreditScorePrompt = ai.definePrompt({
   name: 'explainCreditScorePrompt',
-  model: 'googleai/gemini-1.5-flash',
+  model: googleAIPlugin.model('gemini-1.5-flash'),
   input: { schema: AiCreditScoreExplanationInputSchema },
   output: { schema: AiCreditScoreExplanationOutputSchema },
   prompt: `You are an AI assistant for a finance group named Yuva Finance 2. Provide a brief explanation of a member's credit score ({{{creditScore}}}/10).
@@ -59,10 +59,9 @@ const explainCreditScoreFlow = ai.defineFlow(
       }
       return output;
     } catch (err: any) {
-      console.error("Credit Score Insight Error:", err);
       return { 
-        explanation: "Unable to analyze credit score at this time due to a system error.",
-        actionableInsights: ["Check your payment history manually.", "Ensure all deposits are recorded."]
+        explanation: "Unable to analyze credit score at this time due to a configuration error.",
+        actionableInsights: ["Check history manually.", "Ensure data is synced."]
       };
     }
   }

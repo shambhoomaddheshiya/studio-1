@@ -5,7 +5,7 @@
  * - askAiAssessment - A function that handles general group analysis and Q&A.
  */
 
-import { ai } from '@/ai/genkit';
+import { ai, googleAIPlugin } from '@/ai/genkit';
 import { z } from 'genkit';
 
 const AiAssessmentInputSchema = z.object({
@@ -46,7 +46,7 @@ export type AiAssessmentOutput = z.infer<typeof AiAssessmentOutputSchema>;
 
 const aiAssessmentPrompt = ai.definePrompt({
   name: 'aiAssessmentPrompt',
-  model: 'googleai/gemini-1.5-flash',
+  model: googleAIPlugin.model('gemini-1.5-flash'),
   input: { schema: AiAssessmentInputSchema },
   output: { schema: AiAssessmentOutputSchema },
   config: {
@@ -58,43 +58,45 @@ const aiAssessmentPrompt = ai.definePrompt({
     ],
   },
   prompt: `You are the Yuva Finance 2 AI Advisor. 
-You help the group admin manage the community fund effectively.
+You help the group admin manage the community fund and track member participation.
 
-Group Stats Context:
+Group Stats Summary:
 - Total Fund Available: ₹{{context.totalFunds}}
 - Active Members Count: {{context.activeMembers}}
 - Total Outstanding Loans: ₹{{context.outstandingLoans}}
 - Total Interest Earned: ₹{{context.totalInterestEarned}}
 - Current Period: {{context.currentMonth}}/{{context.currentYear}}
 
-Detailed Member Data:
+Detailed Member Records:
 {{#if context.members}}
-- Members List: {{#each context.members}} [{{id}}] {{name}} ({{status}}) {{/each}}
+- Members List: {{#each context.members}} [ID: {{id}}] {{name}} (Status: {{status}}) {{/each}}
 {{else}}
-- No member list available.
+- No member list provided.
 {{/if}}
 
-Detailed Loan Data:
+Detailed Loan Records:
 {{#if context.activeLoans}}
-- Active Loans: {{#each context.activeLoans}} {{memberName}}: ₹{{amount}} (Outstanding: ₹{{outstanding}}) {{/each}}
+- Active Loans: {{#each context.activeLoans}} Member: {{memberName}} (ID: {{memberId}}), Amount: ₹{{amount}}, Outstanding: ₹{{outstanding}} {{/each}}
 {{else}}
-- No active loans currently.
+- No active loans recorded.
 {{/if}}
 
-Detailed Payment Data (Current Month):
+Detailed Payment Records (This Month):
 {{#if context.recentDeposits}}
-- Recent Deposits: {{#each context.recentDeposits}} {{memberName}}: ₹{{amount}} on {{date}} {{/each}}
+- Deposits Paid: {{#each context.recentDeposits}} Member: {{memberName}}, Amount: ₹{{amount}}, Date: {{date}} {{/each}}
 {{else}}
-- No deposits recorded yet for this month.
+- No deposits recorded yet for the current month.
 {{/if}}
 
 Instructions:
-1. If the user asks "Who hasn't paid this month?", cross-reference the "Members List" with the "Recent Deposits". An active member is considered "paid" if they appear in the Recent Deposits list. List names clearly.
-2. If the user asks about a specific person (e.g., Raju), look for them in the "Members List". If found, report their status and check "Active Loans" for any outstanding debt.
-3. Provide professional, concise, and helpful financial advice based strictly on the provided data.
-4. If you cannot find the answer in the data, explain what is missing.
+1. Identify Persons: If a user asks about a specific person (e.g., "Raju"), find their name in the "Members List". Report their status and check the "Active Loans" list for any money they owe.
+2. Track Non-Payments: If the user asks "Who hasn't paid this month?", compare the "Members List" with the "Deposits Paid" list. Any active member NOT in the deposits list should be mentioned by name.
+3. Financial Growth: Provide advice on fund utilization based on the "Total Fund Available" and "Outstanding Loans".
+4. Tone: Be professional, concise, and community-focused. 
 
-User Question: {{query}}`,
+If you cannot find a specific person or information, state clearly what is missing from the records.
+
+User Query: {{query}}`,
 });
 
 const aiAssessmentFlow = ai.defineFlow(
@@ -106,13 +108,9 @@ const aiAssessmentFlow = ai.defineFlow(
   async (input) => {
     try {
       const { output } = await aiAssessmentPrompt(input);
-      if (!output) {
-        return { answer: "I'm sorry, I couldn't generate an answer based on the current data. Please ensure your records are up to date." };
-      }
-      return output;
+      return output || { answer: "I couldn't generate a response. Please check if your records are complete." };
     } catch (err: any) {
-      console.error("Genkit Flow Error:", err);
-      return { answer: `I encountered a technical issue while analyzing the group records: ${err.message}. Please try again in a few moments.` };
+      return { answer: `Technical Issue: ${err.message}. Please ensure the AI configuration is correct.` };
     }
   }
 );

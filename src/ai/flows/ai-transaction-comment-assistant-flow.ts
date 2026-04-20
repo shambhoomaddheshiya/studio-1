@@ -5,7 +5,7 @@
  * - aiTransactionCommentAssistant - A function that generates a suggested comment for a given transaction.
  */
 
-import { ai } from '@/ai/genkit';
+import { ai, googleAIPlugin } from '@/ai/genkit';
 import { z } from 'genkit';
 
 const AiTransactionCommentAssistantInputSchema = z.object({
@@ -22,7 +22,7 @@ export type AiTransactionCommentAssistantOutput = z.infer<typeof AiTransactionCo
 
 const commentPrompt = ai.definePrompt({
   name: 'commentPrompt',
-  model: 'googleai/gemini-1.5-flash',
+  model: googleAIPlugin.model('gemini-1.5-flash'),
   input: { schema: AiTransactionCommentAssistantInputSchema },
   output: { schema: AiTransactionCommentAssistantOutputSchema },
   prompt: `Generate a concise (max 10 words) and professional ledger comment for a {{transactionType}} of ₹{{amount}} for {{memberName}}.`,
