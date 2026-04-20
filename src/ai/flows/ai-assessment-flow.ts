@@ -109,7 +109,7 @@ const aiAssessmentFlow = ai.defineFlow(
       return { answer: text || "I'm sorry, I couldn't process that request right now." };
     } catch (err: any) {
       console.error('Genkit flow error:', err);
-      return { answer: `Technical Issue: ${err.message}. Please check your environment configuration.` };
+      return { answer: "Technical Issue: I encountered an error while communicating with the AI. This usually happens if the server timeout is reached or the API key is invalid." };
     }
   }
 );

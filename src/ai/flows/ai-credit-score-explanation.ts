@@ -71,7 +71,7 @@ const explainCreditScoreFlow = ai.defineFlow(
     } catch (err: any) {
       console.error('Credit score AI error:', err);
       return { 
-        explanation: `Analysis currently unavailable: ${err.message}`,
+        explanation: `Analysis currently unavailable. Please check your environment configuration.`,
         actionableInsights: ["Manually review transaction history.", "Check for missed monthly deposits."]
       };
     }
