@@ -35,11 +35,15 @@ const aiTransactionCommentAssistantFlow = ai.defineFlow(
     outputSchema: AiTransactionCommentAssistantOutputSchema,
   },
   async (input) => {
-    const { output } = await commentPrompt(input);
-    if (!output) {
-      throw new Error("No output generated from AI model.");
+    try {
+      const { output } = await commentPrompt(input);
+      if (!output) {
+        throw new Error("No output generated from AI model.");
+      }
+      return output;
+    } catch (err: any) {
+      return { suggestedComment: "Transaction recorded." };
     }
-    return output;
   }
 );
 

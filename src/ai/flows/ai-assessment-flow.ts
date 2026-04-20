@@ -35,7 +35,7 @@ const AiAssessmentInputSchema = z.object({
       amount: z.number(),
       date: z.string(),
     })).optional(),
-  }).optional().describe('Current group financial summary and detailed records for context.'),
+  }).optional(),
 });
 export type AiAssessmentInput = z.infer<typeof AiAssessmentInputSchema>;
 
@@ -49,14 +49,6 @@ const aiAssessmentPrompt = ai.definePrompt({
   model: 'googleai/gemini-1.5-flash',
   input: { schema: AiAssessmentInputSchema },
   output: { schema: AiAssessmentOutputSchema },
-  config: {
-    safetySettings: [
-      { category: 'HARM_CATEGORY_HARASSMENT', threshold: 'BLOCK_NONE' },
-      { category: 'HARM_CATEGORY_HATE_SPEECH', threshold: 'BLOCK_NONE' },
-      { category: 'HARM_CATEGORY_SEXUALLY_EXPLICIT', threshold: 'BLOCK_NONE' },
-      { category: 'HARM_CATEGORY_DANGEROUS_CONTENT', threshold: 'BLOCK_NONE' },
-    ],
-  },
   prompt: `You are the Yuva Finance 2 AI Advisor. 
 You help the group admin manage the community fund and track member participation.
 
