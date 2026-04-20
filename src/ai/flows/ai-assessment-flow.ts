@@ -46,7 +46,7 @@ export type AiAssessmentOutput = z.infer<typeof AiAssessmentOutputSchema>;
 
 const aiAssessmentPrompt = ai.definePrompt({
   name: 'aiAssessmentPrompt',
-  model: 'googleai/gemini-1.5-flash',
+  model: 'googleai/gemini-1.5-flash-latest',
   input: { schema: AiAssessmentInputSchema },
   output: { schema: AiAssessmentOutputSchema },
   system: `You are the Yuva Finance 2 AI Advisor. 
@@ -110,7 +110,7 @@ const aiAssessmentFlow = ai.defineFlow(
       return output || { answer: "I'm sorry, I couldn't process that request right now." };
     } catch (err: any) {
       console.error('Genkit flow error:', err);
-      return { answer: `Technical Issue: ${err.message}. Please check if GEMINI_API_KEY is correctly set in your Vercel project environment variables.` };
+      return { answer: `Technical Issue: ${err.message}. Please check if GEMINI_API_KEY is correctly set in your environment variables.` };
     }
   }
 );

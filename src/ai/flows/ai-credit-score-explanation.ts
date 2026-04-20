@@ -29,7 +29,7 @@ export type AiCreditScoreExplanationOutput = z.infer<typeof AiCreditScoreExplana
 
 const explainCreditScorePrompt = ai.definePrompt({
   name: 'explainCreditScorePrompt',
-  model: 'googleai/gemini-1.5-flash',
+  model: 'googleai/gemini-1.5-flash-latest',
   input: { schema: AiCreditScoreExplanationInputSchema },
   output: { schema: AiCreditScoreExplanationOutputSchema },
   system: 'You are a financial analyst for Yuva Finance 2. Explain credit scores based on group-specific contribution and repayment data.',
