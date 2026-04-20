@@ -12,7 +12,7 @@ const AiAssessmentInputSchema = z.object({
   query: z.string().describe('The user\'s question or request for insight.'),
   context: z.object({
     totalFunds: z.number(),
-    activeMembers: z.number(),
+    activeMembersCount: z.number(),
     outstandingLoans: z.number(),
     totalInterestEarned: z.number(),
     currentMonth: z.number(),
@@ -49,46 +49,40 @@ const aiAssessmentPrompt = ai.definePrompt({
   model: 'googleai/gemini-1.5-flash',
   input: { schema: AiAssessmentInputSchema },
   output: { schema: AiAssessmentOutputSchema },
-  prompt: `You are the Yuva Finance 2 AI Advisor. 
-You help the group admin manage the community fund and track member participation.
-
+  system: `You are the Yuva Finance 2 AI Advisor. 
+Your job is to provide accurate financial insights and member status reports.
+CRITICAL INSTRUCTIONS:
+1. Identifying People: If a user mentions a name (e.g., "Raju", "Amit"), search for that name in the 'Members List'. If found, report their status. Then search for that ID in the 'Active Loans' list and report any balances.
+2. Tracking Non-Payments: When asked "Who hasn't paid?", compare the 'Members List' (where status is 'Active') against the 'Deposits Paid' list for the current month. List the names of active members who do NOT appear in the deposits list.
+3. Financial Growth: Analyze the total fund and outstanding loans to give group-level advice.
+4. Be concise and professional.`,
+  prompt: `
 {{#if context}}
-Group Stats Summary:
-- Total Fund Available: ₹{{context.totalFunds}}
-- Active Members Count: {{context.activeMembers}}
-- Total Outstanding Loans: ₹{{context.outstandingLoans}}
-- Total Interest Earned: ₹{{context.totalInterestEarned}}
-- Current Period: {{context.currentMonth}}/{{context.currentYear}}
+--- GROUP CONTEXT DATA ---
+Current Date: {{context.currentMonth}}/{{context.currentYear}}
+Total Group Fund: ₹{{context.totalFunds}}
+Active Members Count: {{context.activeMembersCount}}
+Total Outstanding Loans: ₹{{context.outstandingLoans}}
+Total Interest Earned: ₹{{context.totalInterestEarned}}
 
-Detailed Member Records:
-{{#if context.members}}
-- Members List: {{#each context.members}} [ID: {{{this.id}}}] {{{this.name}}} (Status: {{{this.status}}}) {{/each}}
-{{else}}
-- No member list provided.
-{{/if}}
+MEMBERS LIST:
+{{#each context.members}}
+- ID: {{{this.id}}}, Name: {{{this.name}}}, Status: {{{this.status}}}
+{{/each}}
 
-Detailed Loan Records:
-{{#if context.activeLoans}}
-- Active Loans: {{#each context.activeLoans}} Member: {{{this.memberName}}} (ID: {{{this.memberId}}}), Amount: ₹{{this.amount}}, Outstanding: ₹{{this.outstanding}} {{/each}}
-{{else}}
-- No active loans recorded.
-{{/if}}
+ACTIVE LOANS:
+{{#each context.activeLoans}}
+- Member: {{{this.memberName}}} (ID: {{{this.memberId}}}), Amount: ₹{{this.amount}}, Outstanding: ₹{{this.outstanding}}
+{{/each}}
 
-Detailed Payment Records (This Month):
-{{#if context.recentDeposits}}
-- Deposits Paid: {{#each context.recentDeposits}} Member: {{{this.memberName}}}, Amount: ₹{{this.amount}}, Date: {{{this.date}}} {{/each}}
+DEPOSITS PAID (THIS MONTH):
+{{#each context.recentDeposits}}
+- Member: {{{this.memberName}}}, Amount: ₹{{this.amount}}, Date: {{{this.date}}}
+{{/each}}
+--------------------------
 {{else}}
-- No deposits recorded yet for the current month.
+Note: No specific group context was provided. Please answer based on general principles.
 {{/if}}
-{{else}}
-No group context data available. Please base your response on general financial management principles for community funds.
-{{/if}}
-
-Instructions:
-1. Identify Persons: If a user asks about a specific person (e.g., "Raju"), search for their name in the records provided. Report their status and check the loans list for any money they owe.
-2. Track Non-Payments: If asked "Who hasn't paid?", compare the active member list with the deposits list. Only members in the "Members List" who do NOT appear in the "Deposits Paid" list for the current month should be flagged as unpaid.
-3. Financial Growth: Provide advice based on total funds and outstanding loans.
-4. Tone: Be professional, concise, and community-focused.
 
 User Query: {{query}}`,
 });
@@ -102,7 +96,7 @@ const aiAssessmentFlow = ai.defineFlow(
   async (input) => {
     try {
       const { output } = await aiAssessmentPrompt(input);
-      return output || { answer: "I couldn't generate a response. Please check if your records are complete." };
+      return output || { answer: "I'm sorry, I couldn't process that request right now." };
     } catch (err: any) {
       return { answer: `Technical Issue: ${err.message}. Please ensure the AI configuration is correct.` };
     }

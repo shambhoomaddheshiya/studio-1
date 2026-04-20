@@ -32,17 +32,18 @@ const explainCreditScorePrompt = ai.definePrompt({
   model: 'googleai/gemini-1.5-flash',
   input: { schema: AiCreditScoreExplanationInputSchema },
   output: { schema: AiCreditScoreExplanationOutputSchema },
-  prompt: `You are an AI assistant for a finance group named Yuva Finance 2. Provide a brief explanation of a member's credit score ({{{creditScore}}}/10).
+  system: 'You are a financial analyst for Yuva Finance 2. Explain credit scores based on group-specific contribution and repayment data.',
+  prompt: `Provide a brief explanation of a member's credit score ({{{creditScore}}}/10).
   
-Member Standing:
-- Deposits: ₹{{{totalDeposit}}}
-- Loans Taken: ₹{{{totalLoanTaken}}}
-- Interest Paid: ₹{{{totalInterestPaid}}}
-- Outstanding: ₹{{{currentOutstandingLoan}}}
+Member Details:
+- Total Deposits: ₹{{{totalDeposit}}}
+- Total Loans Taken: ₹{{{totalLoanTaken}}}
+- Total Interest Paid: ₹{{{totalInterestPaid}}}
+- Outstanding Balance: ₹{{{currentOutstandingLoan}}}
 - Missed Payments: {{{missedPaymentsCount}}}
-- Repayment Efficiency: {{{loanRepaymentEfficiency}}}
+- Repayment Rating: {{{loanRepaymentEfficiency}}}
 
-Explain the score and provide 3 actionable insights for improvement.`,
+Explain why they have this score and provide 3 specific actionable insights for them to improve or maintain it.`,
 });
 
 const explainCreditScoreFlow = ai.defineFlow(
@@ -54,14 +55,12 @@ const explainCreditScoreFlow = ai.defineFlow(
   async (input) => {
     try {
       const { output } = await explainCreditScorePrompt(input);
-      if (!output) {
-        throw new Error("No output generated from AI model.");
-      }
+      if (!output) throw new Error("AI response was empty.");
       return output;
     } catch (err: any) {
       return { 
-        explanation: "Unable to analyze credit score at this time due to a configuration error.",
-        actionableInsights: ["Check history manually.", "Ensure data is synced."]
+        explanation: `Analysis currently unavailable: ${err.message}`,
+        actionableInsights: ["Manually review transaction history.", "Check for missed monthly deposits."]
       };
     }
   }
