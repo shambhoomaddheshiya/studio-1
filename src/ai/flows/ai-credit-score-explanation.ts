@@ -31,9 +31,9 @@ const explainCreditScorePrompt = ai.definePrompt({
   name: 'explainCreditScorePrompt',
   model: 'googleai/gemini-2.0-flash',
   input: { schema: AiCreditScoreExplanationInputSchema },
-  output: { schema: AiCreditScoreExplanationOutputSchema },
-  system: 'You are a financial analyst for Yuva Finance 2. Explain credit scores based on group-specific contribution and repayment data.',
-  prompt: `Provide a brief explanation of a member's credit score ({{{creditScore}}}/10).
+  prompt: `You are a financial analyst for Yuva Finance 2. Explain credit scores based on group-specific contribution and repayment data.
+
+Provide a brief explanation of a member's credit score ({{{creditScore}}}/10).
   
 Member Details:
 - Total Deposits: ₹{{{totalDeposit}}}
@@ -43,7 +43,8 @@ Member Details:
 - Missed Payments: {{{missedPaymentsCount}}}
 - Repayment Rating: {{{loanRepaymentEfficiency}}}
 
-Explain why they have this score and provide 3 specific actionable insights for them to improve or maintain it.`,
+Explain why they have this score and provide 3 specific actionable insights for them to improve or maintain it.
+Return your response as a JSON object with two fields: "explanation" (string) and "actionableInsights" (array of strings).`,
 });
 
 const explainCreditScoreFlow = ai.defineFlow(
@@ -54,9 +55,19 @@ const explainCreditScoreFlow = ai.defineFlow(
   },
   async (input) => {
     try {
-      const { output } = await explainCreditScorePrompt(input);
-      if (!output) throw new Error("AI response was empty.");
-      return output;
+      const { text } = await explainCreditScorePrompt(input);
+      if (!text) throw new Error("AI response was empty.");
+      
+      // Basic extraction if the model returns markdown or text around JSON
+      const jsonMatch = text.match(/\{[\s\S]*\}/);
+      if (jsonMatch) {
+        return JSON.parse(jsonMatch[0]);
+      }
+      
+      return { 
+        explanation: text,
+        actionableInsights: ["Review transaction history.", "Ensure timely deposits.", "Reduce outstanding debt."]
+      };
     } catch (err: any) {
       console.error('Credit score AI error:', err);
       return { 

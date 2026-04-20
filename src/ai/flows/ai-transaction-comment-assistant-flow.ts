@@ -24,9 +24,8 @@ const commentPrompt = ai.definePrompt({
   name: 'commentPrompt',
   model: 'googleai/gemini-2.0-flash',
   input: { schema: AiTransactionCommentAssistantInputSchema },
-  output: { schema: AiTransactionCommentAssistantOutputSchema },
-  system: 'You are a meticulous bookkeeper. Generate very short, professional ledger comments.',
-  prompt: `Generate a concise (max 8 words) ledger comment for a {{transactionType}} of ₹{{amount}} by {{memberName}}.`,
+  prompt: `You are a meticulous bookkeeper. Generate very short, professional ledger comments.
+Generate a concise (max 8 words) ledger comment for a {{transactionType}} of ₹{{amount}} by {{memberName}}.`,
 });
 
 const aiTransactionCommentAssistantFlow = ai.defineFlow(
@@ -37,8 +36,8 @@ const aiTransactionCommentAssistantFlow = ai.defineFlow(
   },
   async (input) => {
     try {
-      const { output } = await commentPrompt(input);
-      return output || { suggestedComment: "Transaction recorded." };
+      const { text } = await commentPrompt(input);
+      return { suggestedComment: text?.trim() || "Transaction recorded." };
     } catch (err: any) {
       console.error('Comment assistant AI error:', err);
       return { suggestedComment: "Ledger entry updated." };

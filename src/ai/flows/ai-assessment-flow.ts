@@ -48,8 +48,7 @@ const aiAssessmentPrompt = ai.definePrompt({
   name: 'aiAssessmentPrompt',
   model: 'googleai/gemini-2.0-flash',
   input: { schema: AiAssessmentInputSchema },
-  output: { schema: AiAssessmentOutputSchema },
-  system: `You are the Yuva Finance 2 AI Advisor. 
+  prompt: `You are the Yuva Finance 2 AI Advisor. 
 Your job is to provide accurate financial insights and member status reports based on the provided group context data.
 
 CRITICAL INSTRUCTIONS:
@@ -66,8 +65,8 @@ CRITICAL INSTRUCTIONS:
 
 3. Financial Health: Use the 'Total Group Fund', 'Total Outstanding Loans', and 'Total Interest Earned' to provide overall advice.
 
-4. Be professional, concise, and helpful. Use currency symbols (₹) where appropriate.`,
-  prompt: `
+4. Be professional, concise, and helpful. Use currency symbols (₹) where appropriate.
+
 {{#if context}}
 --- GROUP CONTEXT DATA ---
 Current Date: {{context.currentMonth}}/{{context.currentYear}}
@@ -106,11 +105,11 @@ const aiAssessmentFlow = ai.defineFlow(
   },
   async (input) => {
     try {
-      const { output } = await aiAssessmentPrompt(input);
-      return output || { answer: "I'm sorry, I couldn't process that request right now." };
+      const { text } = await aiAssessmentPrompt(input);
+      return { answer: text || "I'm sorry, I couldn't process that request right now." };
     } catch (err: any) {
       console.error('Genkit flow error:', err);
-      return { answer: `Technical Issue: ${err.message}. Please check if GEMINI_API_KEY is correctly set in your environment variables.` };
+      return { answer: `Technical Issue: ${err.message}. Please check your environment configuration.` };
     }
   }
 );
