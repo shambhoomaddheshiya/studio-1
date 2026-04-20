@@ -5,7 +5,7 @@
  * - askAiAssessment - A function that handles general group analysis and Q&A.
  */
 
-import { ai, googleAIPlugin } from '@/ai/genkit';
+import { ai } from '@/ai/genkit';
 import { z } from 'genkit';
 
 const AiAssessmentInputSchema = z.object({
@@ -46,7 +46,7 @@ export type AiAssessmentOutput = z.infer<typeof AiAssessmentOutputSchema>;
 
 const aiAssessmentPrompt = ai.definePrompt({
   name: 'aiAssessmentPrompt',
-  model: googleAIPlugin.model('gemini-1.5-flash'),
+  model: 'googleai/gemini-1.5-flash',
   input: { schema: AiAssessmentInputSchema },
   output: { schema: AiAssessmentOutputSchema },
   config: {

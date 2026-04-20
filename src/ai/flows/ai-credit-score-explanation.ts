@@ -5,7 +5,7 @@
  * - explainCreditScore - A function that handles the credit score explanation process.
  */
 
-import { ai, googleAIPlugin } from '@/ai/genkit';
+import { ai } from '@/ai/genkit';
 import { z } from 'genkit';
 
 const AiCreditScoreExplanationInputSchema = z.object({
@@ -29,7 +29,7 @@ export type AiCreditScoreExplanationOutput = z.infer<typeof AiCreditScoreExplana
 
 const explainCreditScorePrompt = ai.definePrompt({
   name: 'explainCreditScorePrompt',
-  model: googleAIPlugin.model('gemini-1.5-flash'),
+  model: 'googleai/gemini-1.5-flash',
   input: { schema: AiCreditScoreExplanationInputSchema },
   output: { schema: AiCreditScoreExplanationOutputSchema },
   prompt: `You are an AI assistant for a finance group named Yuva Finance 2. Provide a brief explanation of a member's credit score ({{{creditScore}}}/10).
