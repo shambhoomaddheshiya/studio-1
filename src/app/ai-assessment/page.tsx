@@ -94,7 +94,7 @@ export default function AiAssessmentPage() {
 
     return {
       totalFunds,
-      activeMembers: members.length,
+      activeMembersCount: members.length,
       outstandingLoans,
       totalInterestEarned,
       currentMonth,
@@ -119,7 +119,7 @@ export default function AiAssessmentPage() {
         query: userMessage,
         context: contextData || {
           totalFunds: 0,
-          activeMembers: 0,
+          activeMembersCount: 0,
           outstandingLoans: 0,
           totalInterestEarned: 0,
           currentMonth: new Date().getMonth() + 1,
@@ -172,7 +172,7 @@ export default function AiAssessmentPage() {
                 <div className="space-y-2">
                   {[
                     "Who hasn't paid this month?",
-                    "How much loan does Raju have?",
+                    "How much loan does Rajesh have?",
                     "What is our growth this month?",
                     "Should we disburse more loans?"
                   ].map((tip, i) => (
