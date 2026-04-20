@@ -46,7 +46,7 @@ export type AiAssessmentOutput = z.infer<typeof AiAssessmentOutputSchema>;
 
 const aiAssessmentPrompt = ai.definePrompt({
   name: 'aiAssessmentPrompt',
-  model: 'googleai/gemini-1.5-flash-latest',
+  model: 'googleai/gemini-2.0-flash-exp',
   input: { schema: AiAssessmentInputSchema },
   output: { schema: AiAssessmentOutputSchema },
   system: `You are the Yuva Finance 2 AI Advisor. 
