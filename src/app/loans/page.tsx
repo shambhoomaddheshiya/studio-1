@@ -107,6 +107,8 @@ export default function LoansPage() {
   const handleDelete = async () => {
     if (loanToDelete && db) {
       const loanId = loanToDelete.id;
+      const loanAmount = loanToDelete.loanAmount;
+      const memberId = loanToDelete.memberId;
       
       // 1. Delete the primary loan record
       deleteDocumentNonBlocking(doc(db, 'loans', loanId));
@@ -141,15 +143,23 @@ export default function LoansPage() {
           deleteDocumentNonBlocking(repaymentDoc.ref);
         }
 
-        // Step E: Fallback search (safety) for LoanDisbursement entries matching this amount/member
-        const qFallback = query(txCol, where('transactionType', '==', 'LoanDisbursement'));
-        const snapFallback = await getDocs(qFallback);
-        snapFallback.forEach((docSnap) => {
-          const d = docSnap.data();
-          if (d.amount === loanToDelete.loanAmount && (d.memberId === loanToDelete.memberId || d.comment?.includes(loanId))) {
-             deleteDocumentNonBlocking(docSnap.ref);
-          }
-        });
+        // Step E: HEURISTIC FALLBACK (Safety)
+        // If the disbursement transaction wasn't found by ID, search by amount and member
+        if (snapshotTx.empty) {
+          const qFallback = query(
+            txCol, 
+            where('transactionType', '==', 'LoanDisbursement'),
+            where('amount', '==', loanAmount)
+          );
+          const snapFallback = await getDocs(qFallback);
+          snapFallback.forEach((docSnap) => {
+            const d = docSnap.data();
+            // Double check member ID or comment to avoid accidental deletions
+            if (d.memberId === memberId || d.comment?.includes(loanId)) {
+               deleteDocumentNonBlocking(docSnap.ref);
+            }
+          });
+        }
 
       } catch (e) {
         console.error("Deep cascade cleanup failed:", e);

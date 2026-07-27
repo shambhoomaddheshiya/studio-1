@@ -81,6 +81,8 @@ export default function DepositsPage() {
   const handleDelete = async () => {
     if (depositToDelete && db) {
       const depositId = depositToDelete.id;
+      const amount = depositToDelete.paidAmount;
+      const memberId = depositToDelete.memberId;
       
       // 1. Delete the deposit entry record
       deleteDocumentNonBlocking(doc(db, 'depositEntries', depositId));
@@ -88,11 +90,29 @@ export default function DepositsPage() {
       // 2. Cascade delete linked ledger transactions
       try {
         const txCol = collection(db, 'transactions');
-        const q = query(txCol, where('relatedEntityId', '==', depositId));
-        const querySnapshot = await getDocs(q);
-        querySnapshot.forEach((docSnap) => {
+        
+        // Step A: Search by direct link
+        const qLink = query(txCol, where('relatedEntityId', '==', depositId));
+        const snapshotLink = await getDocs(qLink);
+        snapshotLink.forEach((docSnap) => {
           deleteDocumentNonBlocking(docSnap.ref);
         });
+
+        // Step B: Heuristic fallback (if no direct link found)
+        if (snapshotLink.empty) {
+          const qFallback = query(
+            txCol, 
+            where('transactionType', '==', 'Deposit'),
+            where('amount', '==', amount)
+          );
+          const snapshotFallback = await getDocs(qFallback);
+          snapshotFallback.forEach((docSnap) => {
+            const d = docSnap.data();
+            if (d.memberId === memberId) {
+              deleteDocumentNonBlocking(docSnap.ref);
+            }
+          });
+        }
       } catch (e) {
         console.error("Ledger cleanup failed:", e);
       }
