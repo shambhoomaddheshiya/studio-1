@@ -71,7 +71,7 @@ export default function NewTransactionPage() {
     
     try {
       const formData = new FormData(e.currentTarget);
-      const description = formData.get('description') as string;
+      const description = (formData.get('description') as string) || "";
       const loanIdForRepayment = formData.get('loan_id') as string;
       
       const selectedMember = members?.find(m => m.id === memberId);
@@ -101,7 +101,7 @@ export default function NewTransactionPage() {
           const txRef = doc(collection(db, "transactions"));
           
           // 1. Create Transaction Ledger Entry
-          setDocumentNonBlocking(txRef, {
+          const txData: any = {
             id: txRef.id,
             transactionDate: txDate,
             transactionType: config.type,
@@ -111,11 +111,18 @@ export default function NewTransactionPage() {
             fundCategory: config.fund,
             balanceImpact: config.impact,
             comment: description,
-            relatedEntityId: (config.type === 'PrincipalRepayment' || config.type === 'InterestPayment' || config.type === 'FinePayment') ? loanIdForRepayment : undefined,
-            relatedEntityType: (config.type === 'PrincipalRepayment' || config.type === 'InterestPayment' || config.type === 'FinePayment') ? 'Loan' : undefined,
             createdAt: timestamp,
             updatedAt: timestamp,
-          }, { merge: true });
+          };
+
+          // Only include loan related fields if applicable and ID is present
+          const isLoanRelated = ['PrincipalRepayment', 'InterestPayment', 'FinePayment'].includes(config.type);
+          if (isLoanRelated && loanIdForRepayment) {
+            txData.relatedEntityId = loanIdForRepayment;
+            txData.relatedEntityType = 'Loan';
+          }
+
+          setDocumentNonBlocking(txRef, txData, { merge: true });
 
           // 2. Specialized Entity Creation
           if (config.type === 'PrincipalRepayment') {
@@ -225,6 +232,7 @@ export default function NewTransactionPage() {
         title: "Submission failed",
         description: error.message || "An unexpected error occurred. Please try again."
       });
+    } finally {
       setIsSubmitting(false);
     }
   }
@@ -460,4 +468,3 @@ export default function NewTransactionPage() {
     </div>
   );
 }
-
