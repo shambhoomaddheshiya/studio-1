@@ -13,7 +13,6 @@ import {
   Calendar as CalendarIcon, 
   X, 
   Loader2,
-  CheckCircle2,
   Info
 } from "lucide-react";
 import Link from "next/link";
@@ -63,155 +62,171 @@ export default function NewTransactionPage() {
       return;
     }
     
-    setIsSubmitting(true);
-    const formData = new FormData(e.currentTarget);
-    const description = formData.get('description') as string;
-    const loanIdForRepayment = formData.get('loan_id') as string;
-    
-    const selectedMember = members?.find(m => m.id === memberId);
-    const memberName = selectedMember?.name || "Unknown Member";
-    const timestamp = new Date().toISOString();
-    const txDate = date.toISOString();
-
-    // Define all possible transaction fields
-    const txConfigs = [
-      { key: 'deposit_amount', type: 'Deposit', impact: 'Credit', fund: 'PrincipalFund' },
-      { key: 'interest_paid_amount', type: 'InterestPayment', impact: 'Credit', fund: 'InterestFund' },
-      { key: 'repayment_amount', type: 'PrincipalRepayment', impact: 'Credit', fund: 'PrincipalFund' },
-      { key: 'fine_amount', type: 'FinePayment', impact: 'Credit', fund: 'FineFund' },
-      { key: 'loan_amount', type: 'LoanDisbursement', impact: 'Debit', fund: 'PrincipalFund' },
-      { key: 'expense_amount', type: 'GeneralExpense', impact: 'Debit', fund: 'OperatingFund' },
-      { key: 'waived_amount', type: 'LoanWaived', impact: 'Debit', fund: 'PrincipalFund' },
-    ];
-
-    let recordedCount = 0;
-
-    txConfigs.forEach(config => {
-      const amountValue = formData.get(config.key);
-      const amount = amountValue ? Number(amountValue) : 0;
-
-      if (amount > 0) {
-        recordedCount++;
-        const txRef = doc(collection(db, "transactions"));
-        
-        // 1. Create Transaction Ledger Entry
-        setDocumentNonBlocking(txRef, {
-          id: txRef.id,
-          transactionDate: txDate,
-          transactionType: config.type,
-          amount,
-          memberId,
-          memberName,
-          fundCategory: config.fund,
-          balanceImpact: config.impact,
-          comment: description,
-          relatedEntityId: (config.type === 'PrincipalRepayment' || config.type === 'InterestPayment' || config.type === 'FinePayment') ? loanIdForRepayment : undefined,
-          relatedEntityType: (config.type === 'PrincipalRepayment' || config.type === 'InterestPayment' || config.type === 'FinePayment') ? 'Loan' : undefined,
-          createdAt: timestamp,
-          updatedAt: timestamp,
-        }, { merge: true });
-
-        // 2. Specialized Entity Creation
-        if (config.type === 'PrincipalRepayment') {
-          const repaymentRef = doc(collection(db, "repaymentEntries"));
-          setDocumentNonBlocking(repaymentRef, {
-            id: repaymentRef.id,
-            memberId,
-            loanId: loanIdForRepayment || 'unknown',
-            repaymentDate: txDate,
-            principalPaid: amount,
-            interestPaid: 0,
-            finePaid: 0,
-            repaymentType: 'PrincipalOnly',
-            comment: description,
-            createdAt: timestamp,
-            updatedAt: timestamp,
-          }, { merge: true });
-        } else if (config.type === 'InterestPayment') {
-          const repaymentRef = doc(collection(db, "repaymentEntries"));
-          setDocumentNonBlocking(repaymentRef, {
-            id: repaymentRef.id,
-            memberId,
-            loanId: loanIdForRepayment || 'unknown',
-            repaymentDate: txDate,
-            principalPaid: 0,
-            interestPaid: amount,
-            finePaid: 0,
-            repaymentType: 'InterestOnly',
-            comment: description,
-            createdAt: timestamp,
-            updatedAt: timestamp,
-          }, { merge: true });
-        } else if (config.type === 'FinePayment') {
-          const repaymentRef = doc(collection(db, "repaymentEntries"));
-          setDocumentNonBlocking(repaymentRef, {
-            id: repaymentRef.id,
-            memberId,
-            loanId: loanIdForRepayment || 'unknown',
-            repaymentDate: txDate,
-            principalPaid: 0,
-            interestPaid: 0,
-            finePaid: amount,
-            repaymentType: 'FineOnly',
-            comment: description,
-            createdAt: timestamp,
-            updatedAt: timestamp,
-          }, { merge: true });
-        } else if (config.type === 'Deposit') {
-          const depositRef = doc(collection(db, "depositEntries"));
-          setDocumentNonBlocking(depositRef, {
-            id: depositRef.id,
-            memberId,
-            month: date.getMonth() + 1,
-            year: date.getFullYear(),
-            expectedAmount: 500,
-            paidAmount: amount,
-            status: 'Paid',
-            lateFineApplied: 0,
-            paymentDate: txDate,
-            comment: description,
-            createdAt: timestamp,
-            updatedAt: timestamp,
-          }, { merge: true });
-        }
-      }
-    });
-
-    // Update Loan Document if principal or interest was paid
-    if (loanIdForRepayment) {
-      const selectedLoan = allLoans?.find(l => l.id === loanIdForRepayment);
-      if (selectedLoan) {
-        const principalPaid = Number(formData.get('repayment_amount')) || 0;
-        const interestPaid = Number(formData.get('interest_paid_amount')) || 0;
-
-        if (principalPaid > 0 || interestPaid > 0) {
-          const newPrincipal = Math.max(0, (selectedLoan.outstandingPrincipal || 0) - principalPaid);
-          const newInterest = Math.max(0, (selectedLoan.outstandingInterest || 0) - interestPaid);
-          const newStatus = newPrincipal <= 0 ? 'Closed' : 'Active';
-
-          const loanDocRef = doc(db, 'loans', selectedLoan.id);
-          updateDocumentNonBlocking(loanDocRef, {
-            outstandingPrincipal: newPrincipal,
-            outstandingInterest: newInterest,
-            status: newStatus,
-            updatedAt: timestamp
-          });
-        }
-      }
-    }
-
-    if (recordedCount === 0) {
-      toast({ variant: "destructive", title: "No amounts entered", description: "Please enter at least one transaction amount." });
-      setIsSubmitting(false);
+    if (!date) {
+      toast({ variant: "destructive", title: "Date required", description: "Please select a transaction date." });
       return;
     }
 
-    toast({
-      title: "Transactions recorded",
-      description: `${recordedCount} transaction(s) for ${memberName} have been logged.`,
-    });
+    setIsSubmitting(true);
     
-    router.push("/transactions");
+    try {
+      const formData = new FormData(e.currentTarget);
+      const description = formData.get('description') as string;
+      const loanIdForRepayment = formData.get('loan_id') as string;
+      
+      const selectedMember = members?.find(m => m.id === memberId);
+      const memberName = selectedMember?.name || "Unknown Member";
+      const timestamp = new Date().toISOString();
+      const txDate = date.toISOString();
+
+      // Define all possible transaction fields
+      const txConfigs = [
+        { key: 'deposit_amount', type: 'Deposit', impact: 'Credit', fund: 'PrincipalFund' },
+        { key: 'interest_paid_amount', type: 'InterestPayment', impact: 'Credit', fund: 'InterestFund' },
+        { key: 'repayment_amount', type: 'PrincipalRepayment', impact: 'Credit', fund: 'PrincipalFund' },
+        { key: 'fine_amount', type: 'FinePayment', impact: 'Credit', fund: 'FineFund' },
+        { key: 'loan_amount', type: 'LoanDisbursement', impact: 'Debit', fund: 'PrincipalFund' },
+        { key: 'expense_amount', type: 'GeneralExpense', impact: 'Debit', fund: 'OperatingFund' },
+        { key: 'waived_amount', type: 'LoanWaived', impact: 'Debit', fund: 'PrincipalFund' },
+      ];
+
+      let recordedCount = 0;
+
+      txConfigs.forEach(config => {
+        const amountValue = formData.get(config.key);
+        const amount = amountValue ? Number(amountValue) : 0;
+
+        if (amount > 0) {
+          recordedCount++;
+          const txRef = doc(collection(db, "transactions"));
+          
+          // 1. Create Transaction Ledger Entry
+          setDocumentNonBlocking(txRef, {
+            id: txRef.id,
+            transactionDate: txDate,
+            transactionType: config.type,
+            amount,
+            memberId,
+            memberName,
+            fundCategory: config.fund,
+            balanceImpact: config.impact,
+            comment: description,
+            relatedEntityId: (config.type === 'PrincipalRepayment' || config.type === 'InterestPayment' || config.type === 'FinePayment') ? loanIdForRepayment : undefined,
+            relatedEntityType: (config.type === 'PrincipalRepayment' || config.type === 'InterestPayment' || config.type === 'FinePayment') ? 'Loan' : undefined,
+            createdAt: timestamp,
+            updatedAt: timestamp,
+          }, { merge: true });
+
+          // 2. Specialized Entity Creation
+          if (config.type === 'PrincipalRepayment') {
+            const repaymentRef = doc(collection(db, "repaymentEntries"));
+            setDocumentNonBlocking(repaymentRef, {
+              id: repaymentRef.id,
+              memberId,
+              loanId: loanIdForRepayment || 'unknown',
+              repaymentDate: txDate,
+              principalPaid: amount,
+              interestPaid: 0,
+              finePaid: 0,
+              repaymentType: 'PrincipalOnly',
+              comment: description,
+              createdAt: timestamp,
+              updatedAt: timestamp,
+            }, { merge: true });
+          } else if (config.type === 'InterestPayment') {
+            const repaymentRef = doc(collection(db, "repaymentEntries"));
+            setDocumentNonBlocking(repaymentRef, {
+              id: repaymentRef.id,
+              memberId,
+              loanId: loanIdForRepayment || 'unknown',
+              repaymentDate: txDate,
+              principalPaid: 0,
+              interestPaid: amount,
+              finePaid: 0,
+              repaymentType: 'InterestOnly',
+              comment: description,
+              createdAt: timestamp,
+              updatedAt: timestamp,
+            }, { merge: true });
+          } else if (config.type === 'FinePayment') {
+            const repaymentRef = doc(collection(db, "repaymentEntries"));
+            setDocumentNonBlocking(repaymentRef, {
+              id: repaymentRef.id,
+              memberId,
+              loanId: loanIdForRepayment || 'unknown',
+              repaymentDate: txDate,
+              principalPaid: 0,
+              interestPaid: 0,
+              finePaid: amount,
+              repaymentType: 'FineOnly',
+              comment: description,
+              createdAt: timestamp,
+              updatedAt: timestamp,
+            }, { merge: true });
+          } else if (config.type === 'Deposit') {
+            const depositRef = doc(collection(db, "depositEntries"));
+            setDocumentNonBlocking(depositRef, {
+              id: depositRef.id,
+              memberId,
+              month: date.getMonth() + 1,
+              year: date.getFullYear(),
+              expectedAmount: 500,
+              paidAmount: amount,
+              status: 'Paid',
+              lateFineApplied: 0,
+              paymentDate: txDate,
+              comment: description,
+              createdAt: timestamp,
+              updatedAt: timestamp,
+            }, { merge: true });
+          }
+        }
+      });
+
+      // Update Loan Document if principal or interest was paid
+      if (loanIdForRepayment) {
+        const selectedLoan = allLoans?.find(l => l.id === loanIdForRepayment);
+        if (selectedLoan) {
+          const principalPaid = Number(formData.get('repayment_amount')) || 0;
+          const interestPaid = Number(formData.get('interest_paid_amount')) || 0;
+
+          if (principalPaid > 0 || interestPaid > 0) {
+            const newPrincipal = Math.max(0, (selectedLoan.outstandingPrincipal || 0) - principalPaid);
+            const newInterest = Math.max(0, (selectedLoan.outstandingInterest || 0) - interestPaid);
+            const newStatus = newPrincipal <= 0 ? 'Closed' : 'Active';
+
+            const loanDocRef = doc(db, 'loans', selectedLoan.id);
+            updateDocumentNonBlocking(loanDocRef, {
+              outstandingPrincipal: newPrincipal,
+              outstandingInterest: newInterest,
+              status: newStatus,
+              updatedAt: timestamp
+            });
+          }
+        }
+      }
+
+      if (recordedCount === 0) {
+        toast({ variant: "destructive", title: "No amounts entered", description: "Please enter at least one transaction amount." });
+        setIsSubmitting(false);
+        return;
+      }
+
+      toast({
+        title: "Transactions recorded",
+        description: `${recordedCount} transaction(s) for ${memberName} have been logged.`,
+      });
+      
+      router.push("/transactions");
+    } catch (error: any) {
+      console.error("Submission error:", error);
+      toast({
+        variant: "destructive",
+        title: "Submission failed",
+        description: error.message || "An unexpected error occurred. Please try again."
+      });
+      setIsSubmitting(false);
+    }
   }
 
   // Handle member change to clear selected loan
@@ -231,6 +246,7 @@ export default function NewTransactionPage() {
             size="icon" 
             className="absolute right-4 top-4 rounded-full"
             asChild
+            disabled={isSubmitting}
           >
             <Link href="/transactions"><X className="h-4 w-4" /></Link>
           </Button>
@@ -249,7 +265,7 @@ export default function NewTransactionPage() {
                   {/* Member Selection */}
                   <div className="space-y-2">
                     <Label className="text-slate-700 font-medium">Member</Label>
-                    <Select value={memberId} onValueChange={handleMemberChange} required>
+                    <Select value={memberId} onValueChange={handleMemberChange} required disabled={isSubmitting}>
                       <SelectTrigger className="bg-slate-50 border-slate-200">
                         <SelectValue placeholder={membersLoading ? "Loading members..." : "Select a member"} />
                       </SelectTrigger>
@@ -267,7 +283,7 @@ export default function NewTransactionPage() {
                   <div className="space-y-2">
                     <Label className="text-slate-700 font-medium">Date</Label>
                     <Popover>
-                      <PopoverTrigger asChild>
+                      <PopoverTrigger asChild disabled={isSubmitting}>
                         <Button
                           variant={"outline"}
                           className={cn(
@@ -298,6 +314,7 @@ export default function NewTransactionPage() {
                       name="description" 
                       placeholder="Add any notes here..." 
                       className="min-h-[120px] bg-slate-50 border-slate-200 resize-none"
+                      disabled={isSubmitting}
                     />
                   </div>
 
@@ -321,6 +338,7 @@ export default function NewTransactionPage() {
                         type="number" 
                         placeholder="0" 
                         className="bg-white border-slate-200"
+                        disabled={isSubmitting}
                       />
                     </div>
 
@@ -332,6 +350,7 @@ export default function NewTransactionPage() {
                         type="number" 
                         placeholder="0" 
                         className="bg-white border-slate-200"
+                        disabled={isSubmitting}
                       />
                     </div>
 
@@ -343,6 +362,7 @@ export default function NewTransactionPage() {
                         type="number" 
                         placeholder="0" 
                         className="bg-white border-slate-200"
+                        disabled={isSubmitting}
                       />
                     </div>
 
@@ -354,6 +374,7 @@ export default function NewTransactionPage() {
                         type="number" 
                         placeholder="0" 
                         className="bg-white border-slate-200"
+                        disabled={isSubmitting}
                       />
                     </div>
 
@@ -363,7 +384,7 @@ export default function NewTransactionPage() {
                         name="loan_id" 
                         value={selectedLoanId} 
                         onValueChange={setSelectedLoanId}
-                        disabled={!memberId || memberLoans.length === 0}
+                        disabled={isSubmitting || !memberId || memberLoans.length === 0}
                       >
                         <SelectTrigger className="bg-white border-slate-200 h-10">
                           <SelectValue placeholder={
@@ -390,6 +411,7 @@ export default function NewTransactionPage() {
                         type="number" 
                         placeholder="0" 
                         className="bg-white border-slate-200"
+                        disabled={isSubmitting}
                       />
                     </div>
 
@@ -401,6 +423,7 @@ export default function NewTransactionPage() {
                         type="number" 
                         placeholder="0" 
                         className="bg-white border-slate-200"
+                        disabled={isSubmitting}
                       />
                     </div>
 
@@ -412,6 +435,7 @@ export default function NewTransactionPage() {
                         type="number" 
                         placeholder="0" 
                         className="bg-white border-slate-200"
+                        disabled={isSubmitting}
                       />
                     </div>
                   </div>
@@ -436,3 +460,4 @@ export default function NewTransactionPage() {
     </div>
   );
 }
+
