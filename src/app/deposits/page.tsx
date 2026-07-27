@@ -81,11 +81,11 @@ export default function DepositsPage() {
   const handleDelete = async () => {
     if (depositToDelete && db) {
       const depositId = depositToDelete.id;
-      // 1. Delete the deposit entry
-      const docRef = doc(db, 'depositEntries', depositId);
-      deleteDocumentNonBlocking(docRef);
+      
+      // 1. Delete the deposit entry record
+      deleteDocumentNonBlocking(doc(db, 'depositEntries', depositId));
 
-      // 2. Cascading delete of linked ledger transaction to update dashboard balance
+      // 2. Cascade delete linked ledger transactions
       try {
         const txCol = collection(db, 'transactions');
         const q = query(txCol, where('relatedEntityId', '==', depositId));
@@ -94,18 +94,18 @@ export default function DepositsPage() {
           deleteDocumentNonBlocking(docSnap.ref);
         });
       } catch (e) {
-        console.error("Error cleaning up ledger:", e);
+        console.error("Ledger cleanup failed:", e);
       }
 
       toast({
-        title: "Deposit deleted",
-        description: "The deposit record and ledger entry have been removed.",
+        title: "Deposit Purged",
+        description: "The deposit and ledger entries have been removed successfully.",
       });
       setDepositToDelete(null);
     }
   };
 
-  const handleEditSubmit = (e: React.FormEvent<HTMLFormElement>) => {
+  const handleEditSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
     if (!depositToEdit || !db) return;
     setIsUpdating(true);
@@ -114,18 +114,37 @@ export default function DepositsPage() {
     const amount = Number(formData.get('amount'));
     const date = formData.get('date') as string;
     const comment = formData.get('comment') as string;
+    const isoDate = new Date(date).toISOString();
 
+    // 1. Update Deposit Entry
     const docRef = doc(db, 'depositEntries', depositToEdit.id);
     updateDocumentNonBlocking(docRef, {
       paidAmount: amount,
-      paymentDate: new Date(date).toISOString(),
+      paymentDate: isoDate,
       comment,
       updatedAt: new Date().toISOString()
     });
 
+    // 2. SYNC LEDGER: Update linked transactions
+    try {
+      const txCol = collection(db, 'transactions');
+      const q = query(txCol, where('relatedEntityId', '==', depositToEdit.id));
+      const snapshot = await getDocs(q);
+      snapshot.forEach((docSnap) => {
+        updateDocumentNonBlocking(docSnap.ref, {
+          amount,
+          transactionDate: isoDate,
+          comment: `Updated Deposit: ${comment}`,
+          updatedAt: new Date().toISOString()
+        });
+      });
+    } catch (err) {
+      console.error("Ledger sync failed:", err);
+    }
+
     toast({
-      title: "Deposit updated",
-      description: "The deposit entry has been saved successfully.",
+      title: "Deposit Updated",
+      description: "Both the entry and ledger record have been synchronized.",
     });
     
     setDepositToEdit(null);
@@ -199,7 +218,7 @@ export default function DepositsPage() {
                           </Badge>
                         </TableCell>
                         <TableCell className="text-right font-bold text-primary">
-                          ₹{deposit.paidAmount.toLocaleString()}
+                          ₹{(deposit.paidAmount || 0).toLocaleString()}
                         </TableCell>
                         <TableCell className="text-right">
                           <DropdownMenu>
@@ -257,8 +276,8 @@ export default function DepositsPage() {
           <AlertDialogHeader>
             <AlertDialogTitle>Are you absolutely sure?</AlertDialogTitle>
             <AlertDialogDescription>
-              This action cannot be undone. This will permanently delete the deposit record of 
-              <strong> ₹{depositToDelete?.paidAmount?.toLocaleString()}</strong>.
+              This will permanently delete the deposit record of 
+              <strong> ₹{depositToDelete?.paidAmount?.toLocaleString()}</strong> and all linked ledger transactions.
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
@@ -283,7 +302,7 @@ export default function DepositsPage() {
           <DialogHeader>
             <DialogTitle>Edit Deposit Entry</DialogTitle>
             <DialogDescription>
-              Modify the details for this monthly contribution.
+              Updating the amount or date here will also update the linked ledger entry.
             </DialogDescription>
           </DialogHeader>
           {depositToEdit && (
@@ -321,7 +340,7 @@ export default function DepositsPage() {
                 </Button>
                 <Button type="submit" disabled={isUpdating}>
                   {isUpdating ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : null}
-                  Save Changes
+                  Sync Changes
                 </Button>
               </DialogFooter>
             </form>

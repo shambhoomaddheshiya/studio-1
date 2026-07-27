@@ -13,7 +13,7 @@ import {
 } from "@/components/ui/table";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { Plus, Loader2, MoreHorizontal, Edit, Trash2, IndianRupee, Calendar, FileText, Search, Filter, User } from "lucide-react";
+import { Plus, Loader2, MoreHorizontal, Edit, Trash2, IndianRupee, Calendar, FileText, Search, User } from "lucide-react";
 import Link from "next/link";
 import { Card } from "@/components/ui/card";
 import { useFirestore, useCollection, useMemoFirebase, useUser } from "@/firebase";
@@ -63,7 +63,6 @@ export default function LoansPage() {
   const [loanToEdit, setLoanToEdit] = useState<any | null>(null);
   const [isUpdating, setIsUpdating] = useState(false);
   
-  // Filtering state
   const [searchTerm, setSearchTerm] = useState("");
   const [statusFilter, setStatusFilter] = useState("All");
   const [memberIdFilter, setMemberIdFilter] = useState("All");
@@ -81,7 +80,6 @@ export default function LoansPage() {
   }, [db, user]);
   const { data: members } = useCollection(membersRef);
 
-  // Computed filtered loans
   const loans = React.useMemo(() => {
     if (!rawLoans) return [];
     
@@ -110,47 +108,62 @@ export default function LoansPage() {
     if (loanToDelete && db) {
       const loanId = loanToDelete.id;
       
-      // 1. Delete the loan record
-      const docRef = doc(db, 'loans', loanId);
-      deleteDocumentNonBlocking(docRef);
+      // 1. Delete the primary loan record
+      deleteDocumentNonBlocking(doc(db, 'loans', loanId));
 
-      // 2. Cascade delete linked ledger transactions to update dashboard balance
+      // 2. DEEP CASCADE: Find and delete all related ledger entries and repayment records
       try {
         const txCol = collection(db, 'transactions');
+        const repaymentsCol = collection(db, 'repaymentEntries');
         
-        // Primary search: By explicit related ID link
-        const qById = query(txCol, where('relatedEntityId', '==', loanId));
-        const snapshotById = await getDocs(qById);
-        snapshotById.forEach((docSnap) => {
+        // Step A: Find transactions directly linked to this loan (e.g., Disbursement)
+        const qTx = query(txCol, where('relatedEntityId', '==', loanId));
+        const snapshotTx = await getDocs(qTx);
+        snapshotTx.forEach((docSnap) => {
           deleteDocumentNonBlocking(docSnap.ref);
         });
 
-        // Secondary search: Fallback for older or unlinked test entries
-        // Specifically look for LoanDisbursement entries for this member/outsider name with this amount
-        const qByType = query(txCol, where('transactionType', '==', 'LoanDisbursement'));
-        const snapshotByType = await getDocs(qByType);
-        snapshotByType.forEach((docSnap) => {
-          const data = docSnap.data();
-          const matchesMember = data.memberId === loanToDelete.memberId;
-          const matchesAmount = data.amount === loanToDelete.loanAmount;
-          // Only delete if it matches member/outsider AND amount (to be safe)
-          if (matchesAmount && (matchesMember || data.comment?.includes(loanId))) {
+        // Step B: Find all Repayment Entries for this specific loan
+        const qRepayments = query(repaymentsCol, where('loanId', '==', loanId));
+        const snapshotRepayments = await getDocs(qRepayments);
+        
+        for (const repaymentDoc of snapshotRepayments.docs) {
+          const rId = repaymentDoc.id;
+          
+          // Step C: Find and delete transactions linked to this repayment
+          const qRTx = query(txCol, where('relatedEntityId', '==', rId));
+          const snapshotRTx = await getDocs(qRTx);
+          snapshotRTx.forEach((docSnap) => {
+            deleteDocumentNonBlocking(docSnap.ref);
+          });
+          
+          // Step D: Delete the repayment entry itself
+          deleteDocumentNonBlocking(repaymentDoc.ref);
+        }
+
+        // Step E: Fallback search (safety) for LoanDisbursement entries matching this amount/member
+        const qFallback = query(txCol, where('transactionType', '==', 'LoanDisbursement'));
+        const snapFallback = await getDocs(qFallback);
+        snapFallback.forEach((docSnap) => {
+          const d = docSnap.data();
+          if (d.amount === loanToDelete.loanAmount && (d.memberId === loanToDelete.memberId || d.comment?.includes(loanId))) {
              deleteDocumentNonBlocking(docSnap.ref);
           }
         });
+
       } catch (e) {
-        console.error("Error cleaning up ledger:", e);
+        console.error("Deep cascade cleanup failed:", e);
       }
 
       toast({
-        title: "Loan and Ledger Updated",
-        description: "The loan record and all associated ledger transactions have been removed.",
+        title: "Loan Records Purged",
+        description: "The loan and all associated financial history have been completely removed.",
       });
       setLoanToDelete(null);
     }
   };
 
-  const handleEditSubmit = (e: React.FormEvent<HTMLFormElement>) => {
+  const handleEditSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
     if (!loanToEdit || !db) return;
     setIsUpdating(true);
@@ -160,20 +173,39 @@ export default function LoansPage() {
     const interest = Number(formData.get('interest')) / 100;
     const date = formData.get('date') as string;
     const comment = formData.get('comment') as string;
+    const isoDate = new Date(date).toISOString();
 
+    // 1. Update the Loan Record
     const docRef = doc(db, 'loans', loanToEdit.id);
     updateDocumentNonBlocking(docRef, {
       loanAmount: amount,
       outstandingPrincipal: amount,
       interestRate: interest,
-      loanDate: new Date(date).toISOString(),
+      loanDate: isoDate,
       comment,
       updatedAt: new Date().toISOString()
     });
 
+    // 2. SYNC LEDGER: Update the linked LoanDisbursement transaction
+    try {
+      const txCol = collection(db, 'transactions');
+      const q = query(txCol, where('relatedEntityId', '==', loanToEdit.id), where('transactionType', '==', 'LoanDisbursement'));
+      const snapshot = await getDocs(q);
+      snapshot.forEach((docSnap) => {
+        updateDocumentNonBlocking(docSnap.ref, {
+          amount,
+          transactionDate: isoDate,
+          comment: `Updated Loan [${loanToEdit.id}]: ${comment}`,
+          updatedAt: new Date().toISOString()
+        });
+      });
+    } catch (err) {
+      console.error("Ledger sync failed:", err);
+    }
+
     toast({
-      title: "Loan updated",
-      description: "The loan details have been saved successfully.",
+      title: "Loan & Ledger Updated",
+      description: "Loan terms and financial history have been synchronized.",
     });
     
     setLoanToEdit(null);
@@ -207,7 +239,6 @@ export default function LoansPage() {
         </header>
 
         <Card className="border-none shadow-sm overflow-hidden">
-          {/* Filtering UI */}
           <div className="p-4 border-b flex flex-col md:flex-row gap-4 items-center justify-between bg-white">
             <div className="flex flex-col md:flex-row gap-4 w-full md:max-w-2xl">
               <div className="relative flex-1">
@@ -287,17 +318,17 @@ export default function LoansPage() {
                           {loan.id}
                         </TableCell>
                         <TableCell className="text-sm">
-                          {new Date(loan.loanDate).toLocaleDateString()}
+                          {loan.loanDate ? new Date(loan.loanDate).toLocaleDateString() : '-'}
                         </TableCell>
                         <TableCell className="font-medium">
                           {loan.isOutsiderLoan ? loan.outsiderName : (member?.name || 'Unknown Member')}
                           {loan.isOutsiderLoan && <Badge variant="outline" className="ml-2 text-[10px]">Outsider</Badge>}
                         </TableCell>
                         <TableCell>
-                          ₹{loan.loanAmount.toLocaleString()}
+                          ₹{(loan.loanAmount || 0).toLocaleString()}
                         </TableCell>
                         <TableCell>
-                          {(loan.interestRate * 100).toFixed(1)}% p.m.
+                          {((loan.interestRate || 0) * 100).toFixed(1)}% p.m.
                         </TableCell>
                         <TableCell>
                           <Badge 
@@ -308,7 +339,7 @@ export default function LoansPage() {
                           </Badge>
                         </TableCell>
                         <TableCell className="text-right font-bold text-destructive">
-                          ₹{(loan.outstandingPrincipal + (loan.outstandingInterest || 0)).toLocaleString()}
+                          ₹{((loan.outstandingPrincipal || 0) + (loan.outstandingInterest || 0)).toLocaleString()}
                         </TableCell>
                         <TableCell className="text-right">
                           <DropdownMenu>
@@ -367,7 +398,7 @@ export default function LoansPage() {
             <AlertDialogTitle>Are you absolutely sure?</AlertDialogTitle>
             <AlertDialogDescription>
               This action cannot be undone. This will permanently delete the loan record 
-              <strong> [{loanToDelete?.id}]</strong> of <strong> ₹{loanToDelete?.loanAmount?.toLocaleString()}</strong> and update the dashboard balance.
+              <strong> [{loanToDelete?.id}]</strong> and <strong>EVERY</strong> associated transaction in the ledger.
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
@@ -376,7 +407,7 @@ export default function LoansPage() {
               onClick={handleDelete}
               className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
             >
-              Delete
+              Delete Everything
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
@@ -392,7 +423,7 @@ export default function LoansPage() {
           <DialogHeader>
             <DialogTitle>Edit Loan Details</DialogTitle>
             <DialogDescription>
-              Modify the terms or details for loan <strong>{loanToEdit?.id}</strong>.
+              Modifying these terms will automatically update the linked ledger disbursement entry.
             </DialogDescription>
           </DialogHeader>
           {loanToEdit && (
@@ -409,7 +440,7 @@ export default function LoansPage() {
                   <Plus className="h-4 w-4" />
                   Interest Rate (% p.m.)
                 </Label>
-                <Input id="interest" name="interest" type="number" step="0.1" defaultValue={loanToEdit.interestRate * 100} required />
+                <Input id="interest" name="interest" type="number" step="0.1" defaultValue={(loanToEdit.interestRate || 0) * 100} required />
               </div>
               <div className="grid gap-2">
                 <Label htmlFor="date" className="flex items-center gap-2">
@@ -437,7 +468,7 @@ export default function LoansPage() {
                 </Button>
                 <Button type="submit" disabled={isUpdating}>
                   {isUpdating ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : null}
-                  Save Changes
+                  Sync & Save
                 </Button>
               </DialogFooter>
             </form>
