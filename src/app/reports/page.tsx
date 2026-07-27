@@ -1,6 +1,7 @@
+
 "use client"
 
-import React, { useState } from "react";
+import React, { useState, useMemo } from "react";
 import { Navbar } from "@/components/layout/Navbar";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -16,7 +17,7 @@ import {
 import { useFirestore, useCollection, useMemoFirebase } from "@/firebase";
 import { collection } from "firebase/firestore";
 import { useToast } from "@/hooks/use-toast";
-import { Calendar, FileText, FileDown, Loader2 } from "lucide-react";
+import { Loader2 } from "lucide-react";
 import { Input } from "@/components/ui/input";
 
 export default function ReportsPage() {
@@ -26,25 +27,110 @@ export default function ReportsPage() {
   
   // Form States
   const [scope, setScope] = useState("all");
+  const [selectedMemberId, setSelectedMemberId] = useState<string>("");
   const [period, setPeriod] = useState("all_time");
+  const [selectedMonth, setSelectedMonth] = useState<string>(new Date().getMonth().toString());
+  const [selectedYear, setSelectedYear] = useState<string>(new Date().getFullYear().toString());
+  const [startDate, setStartDate] = useState<string>("");
+  const [endDate, setEndDate] = useState<string>("");
   const [type, setType] = useState("all");
-  const [format, setFormat] = useState("pdf");
+  const [format, setFormat] = useState("excel");
   
-  // Data for "Specific Member" dropdown
+  // Data Fetching
   const membersRef = useMemoFirebase(() => collection(db, 'members'), [db]);
   const { data: members } = useCollection(membersRef);
 
+  const transactionsRef = useMemoFirebase(() => collection(db, 'transactions'), [db]);
+  const { data: allTransactions } = useCollection(transactionsRef);
+
   const handleGenerateReport = () => {
+    if (!allTransactions) {
+      toast({
+        variant: "destructive",
+        title: "No data available",
+        description: "Transaction records are still loading or do not exist.",
+      });
+      return;
+    }
+
     setIsGenerating(true);
     
-    // Simulate report generation
+    // Simulate slight delay for professional feel
     setTimeout(() => {
-      setIsGenerating(false);
-      toast({
-        title: "Report Generated",
-        description: `Your ${format.toUpperCase()} report is ready and will start downloading shortly.`,
-      });
-    }, 2000);
+      try {
+        // 1. Filter Data
+        let filtered = allTransactions.filter(tx => {
+          // Scope Filter
+          if (scope === "specific" && selectedMemberId && tx.memberId !== selectedMemberId) return false;
+
+          // Period Filter
+          if (tx.transactionDate) {
+            const txDate = new Date(tx.transactionDate);
+            if (period === "monthly") {
+              if (txDate.getMonth().toString() !== selectedMonth || txDate.getFullYear().toString() !== selectedYear) return false;
+            } else if (period === "yearly") {
+              if (txDate.getFullYear().toString() !== selectedYear) return false;
+            } else if (period === "custom") {
+              if (startDate && txDate < new Date(startDate)) return false;
+              if (endDate && txDate > new Date(endDate)) return false;
+            }
+          }
+
+          // Type Filter
+          if (type === "deposits" && tx.transactionType !== 'Deposit') return false;
+          if (type === "loans" && tx.transactionType !== 'LoanDisbursement') return false;
+          if (type === "repayments" && !['PrincipalRepayment', 'InterestPayment', 'FinePayment'].includes(tx.transactionType)) return false;
+          if (type === "dep_rep" && !['Deposit', 'PrincipalRepayment', 'InterestPayment', 'FinePayment'].includes(tx.transactionType)) return false;
+
+          return true;
+        });
+
+        // 2. Generate CSV
+        const headers = ["Date", "Member Name", "Member ID", "Type", "Category", "Impact", "Amount", "Comment"];
+        const rows = filtered.map(tx => [
+          tx.transactionDate ? new Date(tx.transactionDate).toLocaleDateString() : 'N/A',
+          tx.memberName || 'N/A',
+          tx.memberId || 'N/A',
+          tx.transactionType || 'N/A',
+          tx.fundCategory || 'N/A',
+          tx.balanceImpact || 'N/A',
+          tx.amount || 0,
+          `"${(tx.comment || '').replace(/"/g, '""')}"`
+        ]);
+
+        const csvContent = [
+          headers.join(","),
+          ...rows.map(r => r.join(","))
+        ].join("\n");
+
+        // 3. Trigger Download
+        const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+        const url = URL.createObjectURL(blob);
+        const link = document.createElement("a");
+        const filename = `YuvaFinance_Report_${new Date().toISOString().split('T')[0]}.${format === 'excel' ? 'csv' : 'pdf.csv'}`;
+        
+        link.setAttribute("href", url);
+        link.setAttribute("download", filename);
+        link.style.visibility = 'hidden';
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+
+        toast({
+          title: "Report Generated",
+          description: `The report for ${filtered.length} transactions has been downloaded.`,
+        });
+      } catch (error) {
+        console.error("Report generation error:", error);
+        toast({
+          variant: "destructive",
+          title: "Generation Failed",
+          description: "An unexpected error occurred while processing the report.",
+        });
+      } finally {
+        setIsGenerating(false);
+      }
+    }, 1000);
   };
 
   return (
@@ -81,7 +167,7 @@ export default function ReportsPage() {
               
               {scope === "specific" && (
                 <div className="mt-2 pl-7 max-w-sm">
-                  <Select>
+                  <Select value={selectedMemberId} onValueChange={setSelectedMemberId}>
                     <SelectTrigger className="bg-white border-slate-200">
                       <SelectValue placeholder="Select a member" />
                     </SelectTrigger>
@@ -119,7 +205,7 @@ export default function ReportsPage() {
 
               {period === "monthly" && (
                 <div className="mt-2 pl-7 flex gap-2 max-w-sm">
-                  <Select defaultValue={new Date().getMonth().toString()}>
+                  <Select value={selectedMonth} onValueChange={setSelectedMonth}>
                     <SelectTrigger className="bg-white border-slate-200">
                       <SelectValue placeholder="Month" />
                     </SelectTrigger>
@@ -131,15 +217,41 @@ export default function ReportsPage() {
                       ))}
                     </SelectContent>
                   </Select>
-                  <Input type="number" defaultValue={new Date().getFullYear()} className="w-24 bg-white border-slate-200" />
+                  <Input 
+                    type="number" 
+                    value={selectedYear} 
+                    onChange={(e) => setSelectedYear(e.target.value)}
+                    className="w-24 bg-white border-slate-200" 
+                  />
+                </div>
+              )}
+
+              {period === "yearly" && (
+                <div className="mt-2 pl-7 max-w-sm">
+                  <Input 
+                    type="number" 
+                    value={selectedYear} 
+                    onChange={(e) => setSelectedYear(e.target.value)}
+                    className="w-24 bg-white border-slate-200" 
+                  />
                 </div>
               )}
 
               {period === "custom" && (
                 <div className="mt-2 pl-7 flex items-center gap-2 max-w-md">
-                  <Input type="date" className="bg-white border-slate-200" />
+                  <Input 
+                    type="date" 
+                    value={startDate} 
+                    onChange={(e) => setStartDate(e.target.value)}
+                    className="bg-white border-slate-200" 
+                  />
                   <span className="text-slate-400">to</span>
-                  <Input type="date" className="bg-white border-slate-200" />
+                  <Input 
+                    type="date" 
+                    value={endDate} 
+                    onChange={(e) => setEndDate(e.target.value)}
+                    className="bg-white border-slate-200" 
+                  />
                 </div>
               )}
             </div>
