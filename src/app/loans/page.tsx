@@ -109,32 +109,32 @@ export default function LoansPage() {
   const handleDelete = async () => {
     if (loanToDelete && db) {
       const loanId = loanToDelete.id;
+      
       // 1. Delete the loan record
       const docRef = doc(db, 'loans', loanId);
       deleteDocumentNonBlocking(docRef);
 
-      // 2. Robust Cascading delete of linked ledger transactions
+      // 2. Cascade delete linked ledger transactions to update dashboard balance
       try {
         const txCol = collection(db, 'transactions');
         
-        // Match by explicit ID link
+        // Primary search: By explicit related ID link
         const qById = query(txCol, where('relatedEntityId', '==', loanId));
         const snapshotById = await getDocs(qById);
         snapshotById.forEach((docSnap) => {
           deleteDocumentNonBlocking(docSnap.ref);
         });
 
-        // Match by member and type for redundancy if ID link is missing
-        const qByMember = query(
-          txCol, 
-          where('memberId', '==', loanToDelete.memberId), 
-          where('transactionType', '==', 'LoanDisbursement')
-        );
-        const snapshotByMember = await getDocs(qByMember);
-        snapshotByMember.forEach((docSnap) => {
+        // Secondary search: Fallback for older or unlinked test entries
+        // Specifically look for LoanDisbursement entries for this member/outsider name with this amount
+        const qByType = query(txCol, where('transactionType', '==', 'LoanDisbursement'));
+        const snapshotByType = await getDocs(qByType);
+        snapshotByType.forEach((docSnap) => {
           const data = docSnap.data();
-          // Verify if it's the same amount/date to avoid accidental deletion
-          if (data.amount === loanToDelete.loanAmount) {
+          const matchesMember = data.memberId === loanToDelete.memberId;
+          const matchesAmount = data.amount === loanToDelete.loanAmount;
+          // Only delete if it matches member/outsider AND amount (to be safe)
+          if (matchesAmount && (matchesMember || data.comment?.includes(loanId))) {
              deleteDocumentNonBlocking(docSnap.ref);
           }
         });
@@ -143,8 +143,8 @@ export default function LoansPage() {
       }
 
       toast({
-        title: "Loan deleted",
-        description: "The loan record and its associated ledger entry have been removed.",
+        title: "Loan and Ledger Updated",
+        description: "The loan record and all associated ledger transactions have been removed.",
       });
       setLoanToDelete(null);
     }
@@ -367,7 +367,7 @@ export default function LoansPage() {
             <AlertDialogTitle>Are you absolutely sure?</AlertDialogTitle>
             <AlertDialogDescription>
               This action cannot be undone. This will permanently delete the loan record 
-              <strong> [{loanToDelete?.id}]</strong> of <strong> ₹{loanToDelete?.loanAmount?.toLocaleString()}</strong>.
+              <strong> [{loanToDelete?.id}]</strong> of <strong> ₹{loanToDelete?.loanAmount?.toLocaleString()}</strong> and update the dashboard balance.
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>

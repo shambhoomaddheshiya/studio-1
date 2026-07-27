@@ -152,11 +152,11 @@ export default function TransactionsPage() {
 
   const handleDelete = () => {
     if (txToDelete && db) {
-      // 1. Delete the ledger entry
+      // 1. Delete the ledger entry (this updates the dashboard balance)
       const docRef = doc(db, 'transactions', txToDelete.id);
       deleteDocumentNonBlocking(docRef);
 
-      // 2. Cascading delete of linked business entity
+      // 2. Cascading delete of linked business entity (Loan, DepositEntry, etc.)
       if (txToDelete.relatedEntityId && txToDelete.relatedEntityType) {
         let collectionName = "";
         if (txToDelete.relatedEntityType === 'Loan') collectionName = "loans";
@@ -171,7 +171,7 @@ export default function TransactionsPage() {
 
       toast({
         title: "Transaction deleted",
-        description: "The record and its associated data have been removed.",
+        description: "The ledger record and its associated directory data have been removed.",
       });
       setTxToDelete(null);
     }
@@ -417,7 +417,7 @@ export default function TransactionsPage() {
             <AlertDialogTitle>Are you absolutely sure?</AlertDialogTitle>
             <AlertDialogDescription>
               This action cannot be undone. This will permanently delete the transaction record of 
-              <strong> ₹{txToDelete?.amount?.toLocaleString()}</strong> for <strong>{txToDelete?.memberName}</strong>.
+              <strong> ₹{txToDelete?.amount?.toLocaleString()}</strong> and update the dashboard balance.
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
