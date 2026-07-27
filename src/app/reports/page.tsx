@@ -1,7 +1,7 @@
 
 "use client"
 
-import React, { useState, useMemo } from "react";
+import React, { useState } from "react";
 import { Navbar } from "@/components/layout/Navbar";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -19,6 +19,8 @@ import { collection } from "firebase/firestore";
 import { useToast } from "@/hooks/use-toast";
 import { Loader2 } from "lucide-react";
 import { Input } from "@/components/ui/input";
+import { jsPDF } from "jspdf";
+import autoTable from "jspdf-autotable";
 
 export default function ReportsPage() {
   const { toast } = useToast();
@@ -28,13 +30,13 @@ export default function ReportsPage() {
   // Form States
   const [scope, setScope] = useState("all");
   const [selectedMemberId, setSelectedMemberId] = useState<string>("");
-  const [period, setPeriod] = useState("all_time");
+  const [period, setPeriod] = useState("monthly");
   const [selectedMonth, setSelectedMonth] = useState<string>(new Date().getMonth().toString());
   const [selectedYear, setSelectedYear] = useState<string>(new Date().getFullYear().toString());
   const [startDate, setStartDate] = useState<string>("");
   const [endDate, setEndDate] = useState<string>("");
   const [type, setType] = useState("all");
-  const [format, setFormat] = useState("excel");
+  const [format, setFormat] = useState("pdf");
   
   // Data Fetching
   const membersRef = useMemoFirebase(() => collection(db, 'members'), [db]);
@@ -55,11 +57,10 @@ export default function ReportsPage() {
 
     setIsGenerating(true);
     
-    // Simulate slight delay for professional feel
     setTimeout(() => {
       try {
         // 1. Filter Data
-        let filtered = allTransactions.filter(tx => {
+        const filtered = allTransactions.filter(tx => {
           // Scope Filter
           if (scope === "specific" && selectedMemberId && tx.memberId !== selectedMemberId) return false;
 
@@ -83,42 +84,17 @@ export default function ReportsPage() {
           if (type === "dep_rep" && !['Deposit', 'PrincipalRepayment', 'InterestPayment', 'FinePayment'].includes(tx.transactionType)) return false;
 
           return true;
-        });
+        }).sort((a, b) => new Date(a.transactionDate || 0).getTime() - new Date(b.transactionDate || 0).getTime());
 
-        // 2. Generate CSV
-        const headers = ["Date", "Member Name", "Member ID", "Type", "Category", "Impact", "Amount", "Comment"];
-        const rows = filtered.map(tx => [
-          tx.transactionDate ? new Date(tx.transactionDate).toLocaleDateString() : 'N/A',
-          tx.memberName || 'N/A',
-          tx.memberId || 'N/A',
-          tx.transactionType || 'N/A',
-          tx.fundCategory || 'N/A',
-          tx.balanceImpact || 'N/A',
-          tx.amount || 0,
-          `"${(tx.comment || '').replace(/"/g, '""')}"`
-        ]);
-
-        const csvContent = [
-          headers.join(","),
-          ...rows.map(r => r.join(","))
-        ].join("\n");
-
-        // 3. Trigger Download
-        const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
-        const url = URL.createObjectURL(blob);
-        const link = document.createElement("a");
-        const filename = `YuvaFinance_Report_${new Date().toISOString().split('T')[0]}.${format === 'excel' ? 'csv' : 'pdf.csv'}`;
-        
-        link.setAttribute("href", url);
-        link.setAttribute("download", filename);
-        link.style.visibility = 'hidden';
-        document.body.appendChild(link);
-        link.click();
-        document.body.removeChild(link);
+        if (format === 'pdf') {
+          generatePDFReport(filtered);
+        } else {
+          generateCSVReport(filtered);
+        }
 
         toast({
           title: "Report Generated",
-          description: `The report for ${filtered.length} transactions has been downloaded.`,
+          description: `The report for ${filtered.length} transactions has been generated.`,
         });
       } catch (error) {
         console.error("Report generation error:", error);
@@ -130,7 +106,105 @@ export default function ReportsPage() {
       } finally {
         setIsGenerating(false);
       }
-    }, 1000);
+    }, 800);
+  };
+
+  const generatePDFReport = (data: any[]) => {
+    const doc = new jsPDF();
+    const now = new Date();
+    const monthName = period === 'monthly' ? new Date(0, parseInt(selectedMonth)).toLocaleString('default', { month: 'long' }) : '';
+    const reportTitle = period === 'monthly' ? `Group Transactions Report: ${monthName} ${selectedYear}` : 'Group Transactions Report';
+    const typeLabel = type === 'all' ? 'All' : type === 'deposits' ? 'Deposits' : type === 'loans' ? 'Loans' : 'Repayments';
+
+    // Header
+    doc.setFontSize(18);
+    doc.text(reportTitle, 14, 20);
+    doc.setFontSize(11);
+    doc.text(`Transaction Type: ${typeLabel}`, 14, 28);
+
+    // Calculate Summary
+    const summary = data.reduce((acc, tx) => {
+      const amt = tx.amount || 0;
+      if (tx.transactionType === 'Deposit') acc.deposits += amt;
+      if (tx.transactionType === 'LoanDisbursement') acc.loans += amt;
+      if (tx.transactionType === 'PrincipalRepayment') acc.principal += amt;
+      if (tx.transactionType === 'InterestPayment') acc.interest += amt;
+      return acc;
+    }, { deposits: 0, loans: 0, principal: 0, interest: 0 });
+
+    // Summary Table
+    autoTable(doc, {
+      startY: 35,
+      head: [['Summary Metric', 'Amount (INR)']],
+      body: [
+        ['Total Deposits (Members + Interest)', `₹ ${summary.deposits.toLocaleString()}`],
+        ['Total Loans', `₹ ${summary.loans.toLocaleString()}`],
+        ['Total Principal Repaid', `₹ ${summary.principal.toLocaleString()}`],
+        ['Total Interest Earned', `₹ ${summary.interest.toLocaleString()}`],
+      ],
+      theme: 'striped',
+      headStyles: { fillColor: [46, 125, 50], textColor: [255, 255, 255] },
+      styles: { fontSize: 10, cellPadding: 4 },
+      columnStyles: { 1: { halign: 'right' } }
+    });
+
+    // Detailed Table
+    const tableData = data.map(tx => {
+      const principal = tx.transactionType === 'PrincipalRepayment' ? `₹ ${tx.amount.toLocaleString()}` : '-';
+      const interest = tx.transactionType === 'InterestPayment' ? `₹ ${tx.amount.toLocaleString()}` : '-';
+      const displayType = tx.transactionType === 'LoanDisbursement' ? 'loan' : tx.transactionType.toLowerCase().replace('payment', '').replace('repayment', 'repayment').replace('principal', '').replace('interest', '');
+
+      return [
+        tx.memberName || 'N/A',
+        tx.transactionDate ? new Date(tx.transactionDate).toISOString().split('T')[0] : 'N/A',
+        displayType,
+        tx.comment || '-',
+        `₹ ${(tx.amount || 0).toLocaleString()}`,
+        principal,
+        interest
+      ];
+    });
+
+    autoTable(doc, {
+      startY: (doc as any).lastAutoTable.finalY + 15,
+      head: [['Member Name', 'Date', 'Type', 'Description', 'Total Amount', 'Principal', 'Interest']],
+      body: tableData,
+      theme: 'striped',
+      headStyles: { fillColor: [21, 101, 192], textColor: [255, 255, 255] },
+      styles: { fontSize: 8, cellPadding: 3 },
+      columnStyles: { 
+        4: { halign: 'right' },
+        5: { halign: 'right' },
+        6: { halign: 'right' }
+      }
+    });
+
+    doc.save(`YuvaFinance_Report_${new Date().toISOString().split('T')[0]}.pdf`);
+  };
+
+  const generateCSVReport = (data: any[]) => {
+    const headers = ["Date", "Member Name", "Member ID", "Type", "Category", "Impact", "Amount", "Comment"];
+    const rows = data.map(tx => [
+      tx.transactionDate ? new Date(tx.transactionDate).toLocaleDateString() : 'N/A',
+      tx.memberName || 'N/A',
+      tx.memberId || 'N/A',
+      tx.transactionType || 'N/A',
+      tx.fundCategory || 'N/A',
+      tx.balanceImpact || 'N/A',
+      tx.amount || 0,
+      `"${(tx.comment || '').replace(/"/g, '""')}"`
+    ]);
+
+    const csvContent = [headers.join(","), ...rows.map(r => r.join(","))].join("\n");
+    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.setAttribute("href", url);
+    link.setAttribute("download", `YuvaFinance_Report_${new Date().toISOString().split('T')[0]}.csv`);
+    link.style.visibility = 'hidden';
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
   };
 
   return (
@@ -185,10 +259,6 @@ export default function ReportsPage() {
             <div className="space-y-3">
               <Label className="text-slate-600 font-medium text-sm">Report Period</Label>
               <RadioGroup value={period} onValueChange={setPeriod} className="flex flex-col space-y-2">
-                <div className="flex items-center space-x-3">
-                  <RadioGroupItem value="all_time" id="period-all" className="border-primary text-primary" />
-                  <Label htmlFor="period-all" className="font-normal text-slate-700 cursor-pointer">All Time</Label>
-                </div>
                 <div className="flex items-center space-x-3">
                   <RadioGroupItem value="monthly" id="period-monthly" className="border-primary text-primary" />
                   <Label htmlFor="period-monthly" className="font-normal text-slate-700 cursor-pointer">Monthly</Label>
@@ -276,10 +346,6 @@ export default function ReportsPage() {
                   <RadioGroupItem value="repayments" id="type-repayments" className="border-primary text-primary" />
                   <Label htmlFor="type-repayments" className="font-normal text-slate-700 cursor-pointer">Repayments</Label>
                 </div>
-                <div className="flex items-center space-x-3">
-                  <RadioGroupItem value="dep_rep" id="type-dep-rep" className="border-primary text-primary" />
-                  <Label htmlFor="type-dep-rep" className="font-normal text-slate-700 cursor-pointer">Deposits & Repayments</Label>
-                </div>
               </RadioGroup>
             </div>
 
@@ -293,7 +359,7 @@ export default function ReportsPage() {
                 </div>
                 <div className="flex items-center space-x-3">
                   <RadioGroupItem value="excel" id="format-excel" className="border-primary text-primary" />
-                  <Label htmlFor="format-excel" className="font-normal text-slate-700 cursor-pointer">Excel (XLSX)</Label>
+                  <Label htmlFor="format-excel" className="font-normal text-slate-700 cursor-pointer">Excel (CSV)</Label>
                 </div>
               </RadioGroup>
             </div>
