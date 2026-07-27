@@ -84,7 +84,6 @@ export default function TransactionsPage() {
 
   const { data: rawTransactions, isLoading } = useCollection(txRef);
 
-  // Get unique years from transactions for the filter
   const availableYears = React.useMemo(() => {
     if (!rawTransactions) return [];
     const years = new Set<string>();
@@ -101,7 +100,6 @@ export default function TransactionsPage() {
     
     let filtered = [...rawTransactions];
 
-    // Search filter
     if (searchTerm) {
       const lowerSearch = searchTerm.toLowerCase();
       filtered = filtered.filter(tx => 
@@ -112,7 +110,6 @@ export default function TransactionsPage() {
       );
     }
 
-    // Category filter
     if (activeFilter !== "All") {
       filtered = filtered.filter(tx => {
         if (activeFilter === "Deposits") return tx.transactionType === 'Deposit';
@@ -124,7 +121,6 @@ export default function TransactionsPage() {
       });
     }
 
-    // Month filter
     if (selectedMonth !== "All") {
       filtered = filtered.filter(tx => {
         if (!tx.transactionDate) return false;
@@ -133,7 +129,6 @@ export default function TransactionsPage() {
       });
     }
 
-    // Year filter
     if (selectedYear !== "All") {
       filtered = filtered.filter(tx => {
         if (!tx.transactionDate) return false;
@@ -142,7 +137,6 @@ export default function TransactionsPage() {
       });
     }
 
-    // Explicit manual sort to ensure latest entries at the top
     return filtered.sort((a, b) => {
       const dateA = new Date(a.transactionDate || 0).getTime();
       const dateB = new Date(b.transactionDate || 0).getTime();
@@ -150,7 +144,7 @@ export default function TransactionsPage() {
     });
   }, [rawTransactions, searchTerm, activeFilter, selectedMonth, selectedYear]);
 
-  const handleDelete = () => {
+  const handleDelete = async () => {
     if (txToDelete && db) {
       // 1. Delete the ledger entry (this updates the dashboard balance)
       const docRef = doc(db, 'transactions', txToDelete.id);
@@ -158,20 +152,32 @@ export default function TransactionsPage() {
 
       // 2. Cascading delete of linked business entity (Loan, DepositEntry, etc.)
       if (txToDelete.relatedEntityId && txToDelete.relatedEntityType) {
-        let collectionName = "";
-        if (txToDelete.relatedEntityType === 'Loan') collectionName = "loans";
-        if (txToDelete.relatedEntityType === 'DepositEntry') collectionName = "depositEntries";
-        if (txToDelete.relatedEntityType === 'RepaymentEntry') collectionName = "repaymentEntries";
+        const collectionName = 
+          txToDelete.relatedEntityType === 'Loan' ? "loans" :
+          txToDelete.relatedEntityType === 'DepositEntry' ? "depositEntries" :
+          txToDelete.relatedEntityType === 'RepaymentEntry' ? "repaymentEntries" : "";
 
         if (collectionName) {
           const entityRef = doc(db, collectionName, txToDelete.relatedEntityId);
           deleteDocumentNonBlocking(entityRef);
+          
+          // If it was a loan, also clean up associated repayments
+          if (collectionName === 'loans') {
+            try {
+              const repaymentsCol = collection(db, 'repaymentEntries');
+              const qRepayments = query(repaymentsCol, where('loanId', '==', txToDelete.relatedEntityId));
+              const snapRepayments = await getDocs(qRepayments);
+              snapRepayments.forEach((rDoc) => {
+                deleteDocumentNonBlocking(rDoc.ref);
+              });
+            } catch (e) { console.error(e); }
+          }
         }
       }
 
       toast({
         title: "Transaction deleted",
-        description: "The ledger record and its associated directory data have been removed.",
+        description: "The record and its associated directory data have been removed.",
       });
       setTxToDelete(null);
     }
@@ -416,8 +422,7 @@ export default function TransactionsPage() {
           <AlertDialogHeader>
             <AlertDialogTitle>Are you absolutely sure?</AlertDialogTitle>
             <AlertDialogDescription>
-              This action cannot be undone. This will permanently delete the transaction record of 
-              <strong> ₹{txToDelete?.amount?.toLocaleString()}</strong> and update the dashboard balance.
+              This action cannot be undone. This will permanently delete the transaction record and update the dashboard balance.
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>

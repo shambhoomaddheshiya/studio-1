@@ -118,7 +118,7 @@ export default function LoansPage() {
         const txCol = collection(db, 'transactions');
         const repaymentsCol = collection(db, 'repaymentEntries');
         
-        // Step A: Find transactions directly linked to this loan (e.g., Disbursement)
+        // Step A: Find transactions directly linked to this loan
         const qTx = query(txCol, where('relatedEntityId', '==', loanId));
         const snapshotTx = await getDocs(qTx);
         snapshotTx.forEach((docSnap) => {
@@ -132,34 +132,29 @@ export default function LoansPage() {
         for (const repaymentDoc of snapshotRepayments.docs) {
           const rId = repaymentDoc.id;
           
-          // Step C: Find and delete transactions linked to this repayment
+          // Find and delete transactions linked to this repayment
           const qRTx = query(txCol, where('relatedEntityId', '==', rId));
           const snapshotRTx = await getDocs(qRTx);
           snapshotRTx.forEach((docSnap) => {
             deleteDocumentNonBlocking(docSnap.ref);
           });
           
-          // Step D: Delete the repayment entry itself
+          // Delete the repayment entry itself
           deleteDocumentNonBlocking(repaymentDoc.ref);
         }
 
-        // Step E: HEURISTIC FALLBACK (Safety)
-        // If the disbursement transaction wasn't found by ID, search by amount and member
-        if (snapshotTx.empty) {
-          const qFallback = query(
-            txCol, 
-            where('transactionType', '==', 'LoanDisbursement'),
-            where('amount', '==', loanAmount)
-          );
-          const snapFallback = await getDocs(qFallback);
-          snapFallback.forEach((docSnap) => {
-            const d = docSnap.data();
-            // Double check member ID or comment to avoid accidental deletions
-            if (d.memberId === memberId || d.comment?.includes(loanId)) {
-               deleteDocumentNonBlocking(docSnap.ref);
-            }
-          });
-        }
+        // Step C: HEURISTIC FALLBACK (Safety Delete for "Ghost" Transactions)
+        // If the disbursement transaction wasn't found by ID (old/broken data), search by amount and member
+        const qFallback = query(
+          txCol, 
+          where('transactionType', '==', 'LoanDisbursement'),
+          where('amount', '==', loanAmount),
+          where('memberId', '==', memberId)
+        );
+        const snapFallback = await getDocs(qFallback);
+        snapFallback.forEach((docSnap) => {
+          deleteDocumentNonBlocking(docSnap.ref);
+        });
 
       } catch (e) {
         console.error("Deep cascade cleanup failed:", e);
@@ -167,7 +162,7 @@ export default function LoansPage() {
 
       toast({
         title: "Loan Records Purged",
-        description: "The loan and all associated financial history have been completely removed.",
+        description: "The loan and all associated ledger entries have been completely removed.",
       });
       setLoanToDelete(null);
     }
@@ -254,7 +249,7 @@ export default function LoansPage() {
               <div className="relative flex-1">
                 <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
                 <Input 
-                  placeholder="Search by ID or custom name..." 
+                  placeholder="Search by ID or name..." 
                   className="pl-10" 
                   value={searchTerm}
                   onChange={(e) => setSearchTerm(e.target.value)}

@@ -84,42 +84,40 @@ export default function DepositsPage() {
       const amount = depositToDelete.paidAmount;
       const memberId = depositToDelete.memberId;
       
-      // 1. Delete the deposit entry record
+      // 1. Delete the primary deposit record
       deleteDocumentNonBlocking(doc(db, 'depositEntries', depositId));
 
-      // 2. Cascade delete linked ledger transactions
+      // 2. DEEP CASCADE: Clean up ledger entries
       try {
         const txCol = collection(db, 'transactions');
         
-        // Step A: Search by direct link
-        const qLink = query(txCol, where('relatedEntityId', '==', depositId));
-        const snapshotLink = await getDocs(qLink);
-        snapshotLink.forEach((docSnap) => {
+        // Step A: Find transactions directly linked to this deposit entry
+        const qTx = query(txCol, where('relatedEntityId', '==', depositId));
+        const snapshotTx = await getDocs(qTx);
+        snapshotTx.forEach((docSnap) => {
           deleteDocumentNonBlocking(docSnap.ref);
         });
 
-        // Step B: Heuristic fallback (if no direct link found)
-        if (snapshotLink.empty) {
-          const qFallback = query(
-            txCol, 
-            where('transactionType', '==', 'Deposit'),
-            where('amount', '==', amount)
-          );
-          const snapshotFallback = await getDocs(qFallback);
-          snapshotFallback.forEach((docSnap) => {
-            const d = docSnap.data();
-            if (d.memberId === memberId) {
-              deleteDocumentNonBlocking(docSnap.ref);
-            }
-          });
-        }
+        // Step B: HEURISTIC FALLBACK (Safety Delete for "Ghost" Transactions)
+        // If the transaction wasn't found by ID, search by amount, type, and member
+        const qFallback = query(
+          txCol, 
+          where('transactionType', '==', 'Deposit'),
+          where('amount', '==', amount),
+          where('memberId', '==', memberId)
+        );
+        const snapFallback = await getDocs(qFallback);
+        snapFallback.forEach((docSnap) => {
+          deleteDocumentNonBlocking(docSnap.ref);
+        });
+
       } catch (e) {
         console.error("Ledger cleanup failed:", e);
       }
 
       toast({
         title: "Deposit Purged",
-        description: "The deposit and ledger entries have been removed successfully.",
+        description: "The deposit and associated ledger entries have been removed.",
       });
       setDepositToDelete(null);
     }
@@ -296,8 +294,7 @@ export default function DepositsPage() {
           <AlertDialogHeader>
             <AlertDialogTitle>Are you absolutely sure?</AlertDialogTitle>
             <AlertDialogDescription>
-              This will permanently delete the deposit record of 
-              <strong> ₹{depositToDelete?.paidAmount?.toLocaleString()}</strong> and all linked ledger transactions.
+              This will permanently delete the deposit record and all linked ledger transactions.
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
