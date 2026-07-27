@@ -1,3 +1,4 @@
+
 "use client"
 
 import React, { useState } from "react";
@@ -25,7 +26,7 @@ import {
 import Link from "next/link";
 import { Card } from "@/components/ui/card";
 import { useFirestore, useCollection, useMemoFirebase, useUser } from "@/firebase";
-import { collection, query, orderBy, doc } from "firebase/firestore";
+import { collection, query, orderBy, doc, where, getDocs } from "firebase/firestore";
 import { 
   DropdownMenu, 
   DropdownMenuContent, 
@@ -77,13 +78,28 @@ export default function DepositsPage() {
   }, [db, user]);
   const { data: members } = useCollection(membersRef);
 
-  const handleDelete = () => {
+  const handleDelete = async () => {
     if (depositToDelete && db) {
-      const docRef = doc(db, 'depositEntries', depositToDelete.id);
+      const depositId = depositToDelete.id;
+      // 1. Delete the deposit entry
+      const docRef = doc(db, 'depositEntries', depositId);
       deleteDocumentNonBlocking(docRef);
+
+      // 2. Cascading delete of linked ledger transaction to update dashboard balance
+      try {
+        const txCol = collection(db, 'transactions');
+        const q = query(txCol, where('relatedEntityId', '==', depositId));
+        const querySnapshot = await getDocs(q);
+        querySnapshot.forEach((docSnap) => {
+          deleteDocumentNonBlocking(docSnap.ref);
+        });
+      } catch (e) {
+        console.error("Error cleaning up ledger:", e);
+      }
+
       toast({
         title: "Deposit deleted",
-        description: "The deposit record has been removed.",
+        description: "The deposit record and ledger entry have been removed.",
       });
       setDepositToDelete(null);
     }

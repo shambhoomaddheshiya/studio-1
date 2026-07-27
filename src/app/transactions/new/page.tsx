@@ -81,11 +81,11 @@ export default function NewTransactionPage() {
 
       // Define all possible transaction fields
       const txConfigs = [
-        { key: 'deposit_amount', type: 'Deposit', impact: 'Credit', fund: 'PrincipalFund' },
-        { key: 'interest_paid_amount', type: 'InterestPayment', impact: 'Credit', fund: 'InterestFund' },
-        { key: 'repayment_amount', type: 'PrincipalRepayment', impact: 'Credit', fund: 'PrincipalFund' },
-        { key: 'fine_amount', type: 'FinePayment', impact: 'Credit', fund: 'FineFund' },
-        { key: 'loan_amount', type: 'LoanDisbursement', impact: 'Debit', fund: 'PrincipalFund' },
+        { key: 'deposit_amount', type: 'Deposit', impact: 'Credit', fund: 'PrincipalFund', entityType: 'DepositEntry' },
+        { key: 'interest_paid_amount', type: 'InterestPayment', impact: 'Credit', fund: 'InterestFund', entityType: 'RepaymentEntry' },
+        { key: 'repayment_amount', type: 'PrincipalRepayment', impact: 'Credit', fund: 'PrincipalFund', entityType: 'RepaymentEntry' },
+        { key: 'fine_amount', type: 'FinePayment', impact: 'Credit', fund: 'FineFund', entityType: 'RepaymentEntry' },
+        { key: 'loan_amount', type: 'LoanDisbursement', impact: 'Debit', fund: 'PrincipalFund', entityType: 'Loan' },
         { key: 'expense_amount', type: 'GeneralExpense', impact: 'Debit', fund: 'OperatingFund' },
         { key: 'waived_amount', type: 'LoanWaived', impact: 'Debit', fund: 'PrincipalFund' },
       ];
@@ -100,78 +100,31 @@ export default function NewTransactionPage() {
           recordedCount++;
           const txRef = doc(collection(db, "transactions"));
           
-          // 1. Create Transaction Ledger Entry
-          const txData: any = {
-            id: txRef.id,
-            transactionDate: txDate,
-            transactionType: config.type,
-            amount,
-            memberId,
-            memberName,
-            fundCategory: config.fund,
-            balanceImpact: config.impact,
-            comment: description,
-            createdAt: timestamp,
-            updatedAt: timestamp,
-          };
+          let relatedEntityId = "";
+          let relatedEntityType = config.entityType || "";
 
-          // Only include loan related fields if applicable and ID is present
-          const isLoanRelated = ['PrincipalRepayment', 'InterestPayment', 'FinePayment'].includes(config.type);
-          if (isLoanRelated && loanIdForRepayment) {
-            txData.relatedEntityId = loanIdForRepayment;
-            txData.relatedEntityType = 'Loan';
-          }
-
-          setDocumentNonBlocking(txRef, txData, { merge: true });
-
-          // 2. Specialized Entity Creation
-          if (config.type === 'PrincipalRepayment') {
+          // Create the specialized entity first to get its ID
+          if (config.type === 'PrincipalRepayment' || config.type === 'InterestPayment' || config.type === 'FinePayment') {
             const repaymentRef = doc(collection(db, "repaymentEntries"));
+            relatedEntityId = repaymentRef.id;
+            
             setDocumentNonBlocking(repaymentRef, {
               id: repaymentRef.id,
               memberId,
               loanId: loanIdForRepayment || 'unknown',
               repaymentDate: txDate,
-              principalPaid: amount,
-              interestPaid: 0,
-              finePaid: 0,
-              repaymentType: 'PrincipalOnly',
-              comment: description,
-              createdAt: timestamp,
-              updatedAt: timestamp,
-            }, { merge: true });
-          } else if (config.type === 'InterestPayment') {
-            const repaymentRef = doc(collection(db, "repaymentEntries"));
-            setDocumentNonBlocking(repaymentRef, {
-              id: repaymentRef.id,
-              memberId,
-              loanId: loanIdForRepayment || 'unknown',
-              repaymentDate: txDate,
-              principalPaid: 0,
-              interestPaid: amount,
-              finePaid: 0,
-              repaymentType: 'InterestOnly',
-              comment: description,
-              createdAt: timestamp,
-              updatedAt: timestamp,
-            }, { merge: true });
-          } else if (config.type === 'FinePayment') {
-            const repaymentRef = doc(collection(db, "repaymentEntries"));
-            setDocumentNonBlocking(repaymentRef, {
-              id: repaymentRef.id,
-              memberId,
-              loanId: loanIdForRepayment || 'unknown',
-              repaymentDate: txDate,
-              principalPaid: 0,
-              interestPaid: 0,
-              finePaid: amount,
-              repaymentType: 'FineOnly',
+              principalPaid: config.type === 'PrincipalRepayment' ? amount : 0,
+              interestPaid: config.type === 'InterestPayment' ? amount : 0,
+              finePaid: config.type === 'FinePayment' ? amount : 0,
+              repaymentType: config.type === 'PrincipalRepayment' ? 'PrincipalOnly' : config.type === 'InterestPayment' ? 'InterestOnly' : 'FineOnly',
               comment: description,
               createdAt: timestamp,
               updatedAt: timestamp,
             }, { merge: true });
           } else if (config.type === 'Deposit') {
             const depositRef = doc(collection(db, "depositEntries"));
+            relatedEntityId = depositRef.id;
+            
             setDocumentNonBlocking(depositRef, {
               id: depositRef.id,
               memberId,
@@ -187,6 +140,28 @@ export default function NewTransactionPage() {
               updatedAt: timestamp,
             }, { merge: true });
           }
+
+          // Create the Transaction Ledger Entry
+          const txData: any = {
+            id: txRef.id,
+            transactionDate: txDate,
+            transactionType: config.type,
+            amount,
+            memberId,
+            memberName,
+            fundCategory: config.fund,
+            balanceImpact: config.impact,
+            comment: description,
+            createdAt: timestamp,
+            updatedAt: timestamp,
+          };
+
+          if (relatedEntityId) {
+            txData.relatedEntityId = relatedEntityId;
+            txData.relatedEntityType = relatedEntityType;
+          }
+
+          setDocumentNonBlocking(txRef, txData, { merge: true });
         }
       });
 

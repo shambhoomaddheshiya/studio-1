@@ -12,7 +12,7 @@ import { Input } from "@/components/ui/input";
 import Link from "next/link";
 import { cn } from "@/lib/utils";
 import { useFirestore, useCollection, useMemoFirebase, useUser } from "@/firebase";
-import { collection, query, orderBy, doc } from "firebase/firestore";
+import { collection, query, orderBy, doc, where, getDocs } from "firebase/firestore";
 import { 
   DropdownMenu, 
   DropdownMenuContent, 
@@ -152,11 +152,26 @@ export default function TransactionsPage() {
 
   const handleDelete = () => {
     if (txToDelete && db) {
+      // 1. Delete the ledger entry
       const docRef = doc(db, 'transactions', txToDelete.id);
       deleteDocumentNonBlocking(docRef);
+
+      // 2. Cascading delete of linked business entity
+      if (txToDelete.relatedEntityId && txToDelete.relatedEntityType) {
+        let collectionName = "";
+        if (txToDelete.relatedEntityType === 'Loan') collectionName = "loans";
+        if (txToDelete.relatedEntityType === 'DepositEntry') collectionName = "depositEntries";
+        if (txToDelete.relatedEntityType === 'RepaymentEntry') collectionName = "repaymentEntries";
+
+        if (collectionName) {
+          const entityRef = doc(db, collectionName, txToDelete.relatedEntityId);
+          deleteDocumentNonBlocking(entityRef);
+        }
+      }
+
       toast({
         title: "Transaction deleted",
-        description: "The record has been permanently removed.",
+        description: "The record and its associated data have been removed.",
       });
       setTxToDelete(null);
     }

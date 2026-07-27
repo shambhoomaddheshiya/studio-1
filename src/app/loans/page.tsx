@@ -1,3 +1,4 @@
+
 "use client"
 
 import React, { useState } from "react";
@@ -16,7 +17,7 @@ import { Plus, Loader2, MoreHorizontal, Edit, Trash2, IndianRupee, Calendar, Fil
 import Link from "next/link";
 import { Card } from "@/components/ui/card";
 import { useFirestore, useCollection, useMemoFirebase, useUser } from "@/firebase";
-import { collection, query, orderBy, doc } from "firebase/firestore";
+import { collection, query, orderBy, doc, where, getDocs } from "firebase/firestore";
 import { 
   DropdownMenu, 
   DropdownMenuContent, 
@@ -105,13 +106,28 @@ export default function LoansPage() {
     });
   }, [rawLoans, members, searchTerm, statusFilter, memberIdFilter]);
 
-  const handleDelete = () => {
+  const handleDelete = async () => {
     if (loanToDelete && db) {
-      const docRef = doc(db, 'loans', loanToDelete.id);
+      const loanId = loanToDelete.id;
+      // 1. Delete the loan record
+      const docRef = doc(db, 'loans', loanId);
       deleteDocumentNonBlocking(docRef);
+
+      // 2. Cascading delete of linked disbursement ledger transaction to update dashboard balance
+      try {
+        const txCol = collection(db, 'transactions');
+        const q = query(txCol, where('relatedEntityId', '==', loanId));
+        const querySnapshot = await getDocs(q);
+        querySnapshot.forEach((docSnap) => {
+          deleteDocumentNonBlocking(docSnap.ref);
+        });
+      } catch (e) {
+        console.error("Error cleaning up ledger:", e);
+      }
+
       toast({
         title: "Loan deleted",
-        description: "The loan record has been removed.",
+        description: "The loan record and its associated ledger entry have been removed.",
       });
       setLoanToDelete(null);
     }

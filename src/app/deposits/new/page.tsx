@@ -1,3 +1,4 @@
+
 "use client"
 
 import React, { useState, useEffect } from "react";
@@ -103,7 +104,7 @@ export default function NewDepositPage() {
         updatedAt: timestamp,
       }, { merge: true });
 
-      // 2. Create Transaction Ledger Entry
+      // 2. Create Transaction Ledger Entry linked to the Deposit Entry
       const txRef = doc(collection(db, "transactions"));
       setDocumentNonBlocking(txRef, {
         id: txRef.id,
@@ -115,6 +116,8 @@ export default function NewDepositPage() {
         fundCategory: type === 'fine_payment' ? 'FineFund' : 'PrincipalFund',
         balanceImpact: 'Credit',
         comment,
+        relatedEntityId: depositRef.id,
+        relatedEntityType: 'DepositEntry',
         createdAt: timestamp,
         updatedAt: timestamp,
       }, { merge: true });
