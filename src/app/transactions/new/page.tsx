@@ -103,7 +103,7 @@ export default function NewTransactionPage() {
           let relatedEntityId = "";
           let relatedEntityType = config.entityType || "";
 
-          // Create the specialized entity first to get its ID
+          // Handle specialized entities to ensure correct linkage and balance impact
           if (config.type === 'PrincipalRepayment' || config.type === 'InterestPayment' || config.type === 'FinePayment') {
             const repaymentRef = doc(collection(db, "repaymentEntries"));
             relatedEntityId = repaymentRef.id;
@@ -139,6 +139,26 @@ export default function NewTransactionPage() {
               createdAt: timestamp,
               updatedAt: timestamp,
             }, { merge: true });
+          } else if (config.type === 'LoanDisbursement') {
+            // When issuing a loan from this screen, we create a corresponding Loan document
+            const loanId = `L-${txRef.id.substring(0, 5).toUpperCase()}`;
+            relatedEntityId = loanId;
+            
+            const loanRef = doc(db, "loans", loanId);
+            setDocumentNonBlocking(loanRef, {
+              id: loanId,
+              memberId,
+              loanAmount: amount,
+              interestRate: 0.02, // Default 2% monthly
+              loanDate: txDate,
+              outstandingPrincipal: amount,
+              outstandingInterest: 0,
+              status: 'Active',
+              isOutsiderLoan: false,
+              comment: description,
+              createdAt: timestamp,
+              updatedAt: timestamp,
+            }, { merge: true });
           }
 
           // Create the Transaction Ledger Entry
@@ -165,7 +185,7 @@ export default function NewTransactionPage() {
         }
       });
 
-      // Update Loan Document if principal or interest was paid
+      // Update existing Loan Document if principal or interest was paid
       if (loanIdForRepayment) {
         const selectedLoan = allLoans?.find(l => l.id === loanIdForRepayment);
         if (selectedLoan) {

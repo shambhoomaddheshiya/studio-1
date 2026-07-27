@@ -113,13 +113,30 @@ export default function LoansPage() {
       const docRef = doc(db, 'loans', loanId);
       deleteDocumentNonBlocking(docRef);
 
-      // 2. Cascading delete of linked disbursement ledger transaction to update dashboard balance
+      // 2. Robust Cascading delete of linked ledger transactions
       try {
         const txCol = collection(db, 'transactions');
-        const q = query(txCol, where('relatedEntityId', '==', loanId));
-        const querySnapshot = await getDocs(q);
-        querySnapshot.forEach((docSnap) => {
+        
+        // Match by explicit ID link
+        const qById = query(txCol, where('relatedEntityId', '==', loanId));
+        const snapshotById = await getDocs(qById);
+        snapshotById.forEach((docSnap) => {
           deleteDocumentNonBlocking(docSnap.ref);
+        });
+
+        // Match by member and type for redundancy if ID link is missing
+        const qByMember = query(
+          txCol, 
+          where('memberId', '==', loanToDelete.memberId), 
+          where('transactionType', '==', 'LoanDisbursement')
+        );
+        const snapshotByMember = await getDocs(qByMember);
+        snapshotByMember.forEach((docSnap) => {
+          const data = docSnap.data();
+          // Verify if it's the same amount/date to avoid accidental deletion
+          if (data.amount === loanToDelete.loanAmount) {
+             deleteDocumentNonBlocking(docSnap.ref);
+          }
         });
       } catch (e) {
         console.error("Error cleaning up ledger:", e);
