@@ -137,21 +137,22 @@ export default function ReportsPage() {
       startY: 35,
       head: [['Summary Metric', 'Amount (INR)']],
       body: [
-        ['Total Deposits (Members + Interest)', `₹ ${summary.deposits.toLocaleString()}`],
-        ['Total Loans', `₹ ${summary.loans.toLocaleString()}`],
-        ['Total Principal Repaid', `₹ ${summary.principal.toLocaleString()}`],
-        ['Total Interest Earned', `₹ ${summary.interest.toLocaleString()}`],
+        ['Total Deposits', `Rs. ${summary.deposits.toLocaleString('en-IN')}`],
+        ['Total Loans Issued', `Rs. ${summary.loans.toLocaleString('en-IN')}`],
+        ['Total Principal Repaid', `Rs. ${summary.principal.toLocaleString('en-IN')}`],
+        ['Total Interest Earned', `Rs. ${summary.interest.toLocaleString('en-IN')}`],
       ],
       theme: 'striped',
       headStyles: { fillColor: [46, 125, 50], textColor: [255, 255, 255] },
-      styles: { fontSize: 10, cellPadding: 4 },
+      styles: { fontSize: 10, cellPadding: 4, font: 'helvetica' },
       columnStyles: { 1: { halign: 'right' } }
     });
 
     // Detailed Table
     const tableData = data.map(tx => {
-      const principal = tx.transactionType === 'PrincipalRepayment' ? `₹ ${tx.amount.toLocaleString()}` : '-';
-      const interest = tx.transactionType === 'InterestPayment' ? `₹ ${tx.amount.toLocaleString()}` : '-';
+      const amtStr = (tx.amount || 0).toLocaleString('en-IN');
+      const principal = tx.transactionType === 'PrincipalRepayment' ? `Rs. ${amtStr}` : '-';
+      const interest = tx.transactionType === 'InterestPayment' ? `Rs. ${amtStr}` : '-';
       const displayType = tx.transactionType === 'LoanDisbursement' ? 'loan' : tx.transactionType.toLowerCase().replace('payment', '').replace('repayment', 'repayment').replace('principal', '').replace('interest', '');
 
       return [
@@ -159,7 +160,7 @@ export default function ReportsPage() {
         tx.transactionDate ? new Date(tx.transactionDate).toISOString().split('T')[0] : 'N/A',
         displayType,
         tx.comment || '-',
-        `₹ ${(tx.amount || 0).toLocaleString()}`,
+        `Rs. ${amtStr}`,
         principal,
         interest
       ];
@@ -171,7 +172,7 @@ export default function ReportsPage() {
       body: tableData,
       theme: 'striped',
       headStyles: { fillColor: [21, 101, 192], textColor: [255, 255, 255] },
-      styles: { fontSize: 8, cellPadding: 3 },
+      styles: { fontSize: 8, cellPadding: 3, font: 'helvetica' },
       columnStyles: { 
         4: { halign: 'right' },
         5: { halign: 'right' },
@@ -308,7 +309,7 @@ export default function ReportsPage() {
               )}
 
               {period === "custom" && (
-                <div className="mt-2 pl-7 flex items-center gap-2 max-w-md">
+                <div className="mt-2 pl-7 flex items-center gap-2 max-md">
                   <Input 
                     type="date" 
                     value={startDate} 
