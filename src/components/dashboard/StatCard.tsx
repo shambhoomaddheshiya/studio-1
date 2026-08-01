@@ -1,4 +1,5 @@
-import { Card, CardContent } from "@/components/ui/card";
+
+import { Card, CardContent } from "@/components/ui/stat-card-base";
 import { LucideIcon } from "lucide-react";
 import { cn } from "@/lib/utils";
 
@@ -36,7 +37,7 @@ export function StatCard({
             )}
           </div>
           {Icon && (
-            <div className={cn("p-3 rounded-xl bg-muted", iconClassName)}>
+            <div className={cn("p-3 rounded-xl", iconClassName)}>
               <Icon className="h-6 w-6" />
             </div>
           )}
@@ -47,7 +48,7 @@ export function StatCard({
               "text-xs font-medium px-1.5 py-0.5 rounded-full",
               trend.isPositive ? "bg-green-100 text-green-700" : "bg-red-100 text-red-700"
             )}>
-              {trend.isPositive ? '+' : '-'}{Math.abs(trend.value)}%
+              {Math.abs(trend.value)}%
             </span>
             <span className="text-xs text-muted-foreground">vs last month</span>
           </div>

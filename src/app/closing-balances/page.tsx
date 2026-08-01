@@ -14,8 +14,6 @@ import {
 import { Card } from "@/components/ui/card";
 import { 
   Loader2, 
-  TrendingUp, 
-  TrendingDown, 
   Calendar,
   IndianRupee,
   Scale
