@@ -40,6 +40,11 @@ export default function NewLoanPage() {
   const loansRef = useMemoFirebase(() => collection(db, 'loans'), [db]);
   const { data: allLoans, isLoading: loansLoading } = useCollection(loansRef);
 
+  const sortedMembers = React.useMemo(() => {
+    if (!members) return [];
+    return [...members].sort((a, b) => (a.name || "").localeCompare(b.name || ""));
+  }, [members]);
+
   function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
     if (loansLoading) return;
@@ -58,7 +63,6 @@ export default function NewLoanPage() {
     const timestamp = new Date().toISOString();
     const loanDate = date ? new Date(date).toISOString() : timestamp;
 
-    // Generate numeric incrementing ID starting from 001
     let nextId = "001";
     if (allLoans && allLoans.length > 0) {
       const numericIds = allLoans
@@ -70,13 +74,12 @@ export default function NewLoanPage() {
       }
     }
 
-    // 1. Create Loan Record with generated ID
     const loanRef = doc(db, "loans", nextId);
     setDocumentNonBlocking(loanRef, {
       id: nextId,
       memberId,
       loanAmount: amount,
-      interestRate: interest / 100, // Monthly decimal
+      interestRate: interest / 100, 
       loanDate,
       outstandingPrincipal: amount,
       outstandingInterest: 0,
@@ -87,7 +90,6 @@ export default function NewLoanPage() {
       updatedAt: timestamp,
     }, { merge: true });
 
-    // 2. Create Transaction Ledger Entry
     const txRef = doc(collection(db, "transactions"));
     setDocumentNonBlocking(txRef, {
       id: txRef.id,
@@ -145,7 +147,7 @@ export default function NewLoanPage() {
                       <SelectValue placeholder={membersLoading ? "Loading members..." : "Select member for loan"} />
                     </SelectTrigger>
                     <SelectContent>
-                      {members?.map(m => (
+                      {sortedMembers.map(m => (
                         <SelectItem key={m.id} value={m.id}>
                           {m.name} (Credit: {m.creditRating}/10)
                         </SelectItem>

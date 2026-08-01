@@ -42,6 +42,11 @@ export default function NewDepositPage() {
   const membersRef = useMemoFirebase(() => collection(db, 'members'), [db]);
   const { data: members, isLoading: membersLoading } = useCollection(membersRef);
 
+  const sortedMembers = React.useMemo(() => {
+    if (!members) return [];
+    return [...members].sort((a, b) => (a.name || "").localeCompare(b.name || ""));
+  }, [members]);
+
   const handleSelectAll = (checked: boolean | string) => {
     if (checked === true && members) {
       setSelectedMemberIds(members.map(m => m.id));
@@ -81,20 +86,19 @@ export default function NewDepositPage() {
     const timestamp = new Date().toISOString();
     const entryDate = date ? new Date(date).toISOString() : timestamp;
 
-    const membersToProcess = members?.filter(m => selectedMemberIds.includes(m.id)) || [];
+    const membersToProcess = sortedMembers.filter(m => selectedMemberIds.includes(m.id));
 
     membersToProcess.forEach(member => {
       const currentMemberId = member.id;
       const memberName = member.name || "Unknown Member";
 
-      // 1. Create Deposit Entry
       const depositRef = doc(collection(db, "depositEntries"));
       setDocumentNonBlocking(depositRef, {
         id: depositRef.id,
         memberId: currentMemberId,
         month: new Date(entryDate).getMonth() + 1,
         year: new Date(entryDate).getFullYear(),
-        expectedAmount: 500, // Standard rule
+        expectedAmount: 500,
         paidAmount: amount,
         status: 'Paid',
         lateFineApplied: 0,
@@ -104,7 +108,6 @@ export default function NewDepositPage() {
         updatedAt: timestamp,
       }, { merge: true });
 
-      // 2. Create Transaction Ledger Entry linked to the Deposit Entry
       const txRef = doc(collection(db, "transactions"));
       setDocumentNonBlocking(txRef, {
         id: txRef.id,
@@ -131,7 +134,7 @@ export default function NewDepositPage() {
     router.push("/transactions");
   }
 
-  const allSelected = members && members.length > 0 && selectedMemberIds.length === members.length;
+  const allSelected = sortedMembers.length > 0 && selectedMemberIds.length === sortedMembers.length;
 
   return (
     <div className="min-h-screen flex flex-col">
@@ -163,13 +166,13 @@ export default function NewDepositPage() {
                     id="select-all" 
                     checked={allSelected}
                     onCheckedChange={handleSelectAll}
-                    disabled={membersLoading || !members?.length}
+                    disabled={membersLoading || !sortedMembers.length}
                   />
                   <Label 
                     htmlFor="select-all" 
                     className="text-sm font-semibold cursor-pointer select-none"
                   >
-                    Select All Members ({selectedMemberIds.length} / {members?.length || 0})
+                    Select All Members ({selectedMemberIds.length} / {sortedMembers.length})
                   </Label>
                 </div>
 
@@ -181,7 +184,7 @@ export default function NewDepositPage() {
                       </div>
                     ) : (
                       <div className="grid gap-3">
-                        {members?.map((member) => (
+                        {sortedMembers.map((member) => (
                           <div 
                             key={member.id} 
                             className={cn(
@@ -205,7 +208,7 @@ export default function NewDepositPage() {
                             </Label>
                           </div>
                         ))}
-                        {(!members || members.length === 0) && !membersLoading && (
+                        {(!sortedMembers || sortedMembers.length === 0) && !membersLoading && (
                           <p className="text-center text-sm text-muted-foreground py-8">
                             No active members found.
                           </p>

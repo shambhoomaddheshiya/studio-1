@@ -46,10 +46,14 @@ export default function NewTransactionPage() {
   const membersRef = useMemoFirebase(() => collection(db, 'members'), [db]);
   const { data: members, isLoading: membersLoading } = useCollection(membersRef);
 
+  const sortedMembers = React.useMemo(() => {
+    if (!members) return [];
+    return [...members].sort((a, b) => (a.name || "").localeCompare(b.name || ""));
+  }, [members]);
+
   const loansRef = useMemoFirebase(() => collection(db, 'loans'), [db]);
   const { data: allLoans, isLoading: loansLoading } = useCollection(loansRef);
 
-  // Filter loans for the selected member
   const memberLoans = React.useMemo(() => {
     if (!allLoans || !memberId) return [];
     return allLoans.filter(loan => loan.memberId === memberId && loan.status !== 'Closed');
@@ -79,7 +83,6 @@ export default function NewTransactionPage() {
       const timestamp = new Date().toISOString();
       const txDate = date.toISOString();
 
-      // Define all possible transaction fields
       const txConfigs = [
         { key: 'deposit_amount', type: 'Deposit', impact: 'Credit', fund: 'PrincipalFund', entityType: 'DepositEntry' },
         { key: 'interest_paid_amount', type: 'InterestPayment', impact: 'Credit', fund: 'InterestFund', entityType: 'RepaymentEntry' },
@@ -103,7 +106,6 @@ export default function NewTransactionPage() {
           let relatedEntityId = "";
           let relatedEntityType = config.entityType || "";
 
-          // Handle specialized entities to ensure correct linkage and balance impact
           if (config.type === 'PrincipalRepayment' || config.type === 'InterestPayment' || config.type === 'FinePayment') {
             const repaymentRef = doc(collection(db, "repaymentEntries"));
             relatedEntityId = repaymentRef.id;
@@ -140,7 +142,6 @@ export default function NewTransactionPage() {
               updatedAt: timestamp,
             }, { merge: true });
           } else if (config.type === 'LoanDisbursement') {
-            // When issuing a loan from this screen, we create a corresponding Loan document
             const loanId = `L-${txRef.id.substring(0, 5).toUpperCase()}`;
             relatedEntityId = loanId;
             
@@ -149,7 +150,7 @@ export default function NewTransactionPage() {
               id: loanId,
               memberId,
               loanAmount: amount,
-              interestRate: 0.02, // Default 2% monthly
+              interestRate: 0.02,
               loanDate: txDate,
               outstandingPrincipal: amount,
               outstandingInterest: 0,
@@ -161,7 +162,6 @@ export default function NewTransactionPage() {
             }, { merge: true });
           }
 
-          // Create the Transaction Ledger Entry
           const txData: any = {
             id: txRef.id,
             transactionDate: txDate,
@@ -185,7 +185,6 @@ export default function NewTransactionPage() {
         }
       });
 
-      // Update existing Loan Document if principal or interest was paid
       if (loanIdForRepayment) {
         const selectedLoan = allLoans?.find(l => l.id === loanIdForRepayment);
         if (selectedLoan) {
@@ -232,7 +231,6 @@ export default function NewTransactionPage() {
     }
   }
 
-  // Handle member change to clear selected loan
   const handleMemberChange = (id: string) => {
     setMemberId(id);
     setSelectedLoanId("");
@@ -265,7 +263,6 @@ export default function NewTransactionPage() {
             <form onSubmit={handleSubmit} className="space-y-6">
               <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                 <div className="space-y-4">
-                  {/* Member Selection */}
                   <div className="space-y-2">
                     <Label className="text-slate-700 font-medium">Member</Label>
                     <Select value={memberId} onValueChange={handleMemberChange} required disabled={isSubmitting}>
@@ -273,7 +270,7 @@ export default function NewTransactionPage() {
                         <SelectValue placeholder={membersLoading ? "Loading members..." : "Select a member"} />
                       </SelectTrigger>
                       <SelectContent>
-                        {members?.map(m => (
+                        {sortedMembers.map(m => (
                           <SelectItem key={m.id} value={m.id}>
                             {m.name} ({m.id})
                           </SelectItem>
@@ -282,7 +279,6 @@ export default function NewTransactionPage() {
                     </Select>
                   </div>
 
-                  {/* Date Picker */}
                   <div className="space-y-2">
                     <Label className="text-slate-700 font-medium">Date</Label>
                     <Popover>
@@ -309,7 +305,6 @@ export default function NewTransactionPage() {
                     </Popover>
                   </div>
 
-                  {/* Description */}
                   <div className="space-y-2">
                     <Label htmlFor="description" className="text-slate-700 font-medium">Description</Label>
                     <Textarea 
