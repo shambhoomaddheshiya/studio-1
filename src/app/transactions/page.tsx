@@ -1,4 +1,3 @@
-
 "use client"
 
 import React, { useState } from "react";
@@ -17,12 +16,7 @@ import {
   Trash2, 
   Calendar, 
   IndianRupee, 
-  FileText,
-  Users,
-  HandCoins,
-  ArrowRightLeft,
-  Receipt,
-  Coins
+  FileText
 } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import Link from "next/link";
@@ -311,38 +305,26 @@ export default function TransactionsPage() {
           <StatCard 
             title="Filtered Deposits" 
             value={`₹${Math.abs(stats.deposits).toLocaleString()}`}
-            icon={Users}
-            iconClassName="bg-cyan-100 text-cyan-600"
           />
           <StatCard 
             title="Filtered Repayments" 
             value={`₹${Math.abs(stats.repayments).toLocaleString()}`}
-            icon={ArrowRightLeft}
-            iconClassName="bg-emerald-100 text-emerald-600"
           />
           <StatCard 
             title="Filtered Loans" 
             value={`₹${Math.abs(stats.loans).toLocaleString()}`}
-            icon={HandCoins}
-            iconClassName="bg-indigo-100 text-indigo-600"
           />
           <StatCard 
             title="Filtered Expenses" 
             value={`₹${Math.abs(stats.expenses).toLocaleString()}`}
-            icon={Receipt}
-            iconClassName="bg-rose-100 text-rose-600"
           />
           <StatCard 
             title="Total Remaining Fund" 
             value={`₹${Math.abs(stats.remaining).toLocaleString()}`}
-            icon={Coins}
-            iconClassName="bg-blue-100 text-primary"
           />
           <StatCard 
             title="Total Deposits" 
             value={`₹${Math.abs(stats.allTimeDeposits).toLocaleString()}`}
-            icon={Users}
-            iconClassName="bg-slate-100 text-slate-600"
           />
         </div>
 

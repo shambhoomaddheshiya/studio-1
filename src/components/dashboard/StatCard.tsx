@@ -6,7 +6,7 @@ interface StatCardProps {
   title: string;
   value: string | number;
   description?: string;
-  icon: LucideIcon;
+  icon?: LucideIcon;
   trend?: {
     value: number;
     isPositive: boolean;
@@ -35,9 +35,11 @@ export function StatCard({
               <p className="text-xs text-muted-foreground mt-1">{description}</p>
             )}
           </div>
-          <div className={cn("p-3 rounded-xl bg-muted", iconClassName)}>
-            <Icon className="h-6 w-6" />
-          </div>
+          {Icon && (
+            <div className={cn("p-3 rounded-xl bg-muted", iconClassName)}>
+              <Icon className="h-6 w-6" />
+            </div>
+          )}
         </div>
         {trend && (
           <div className="mt-4 flex items-center gap-1">
