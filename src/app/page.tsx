@@ -6,17 +6,12 @@ import { Navbar } from "@/components/layout/Navbar";
 import { StatCard } from "@/components/dashboard/StatCard";
 import { 
   Users, 
-  HandCoins, 
   TrendingUp, 
-  History,
   Wallet,
   Loader2,
   Landmark,
   CalendarCheck,
   Filter,
-  ArrowRightLeft,
-  Receipt,
-  HeartHandshake,
   PiggyBank,
   Scroll,
   UserCheck,
@@ -33,15 +28,6 @@ import {
   SelectTrigger, 
   SelectValue 
 } from "@/components/ui/select";
-import { 
-  Table, 
-  TableBody, 
-  TableCell, 
-  TableHead, 
-  TableHeader, 
-  TableRow 
-} from "@/components/ui/table";
-import { Badge } from "@/components/ui/badge";
 import { useFirestore, useCollection, useMemoFirebase, useUser } from "@/firebase";
 import { collection } from "firebase/firestore";
 import { cn } from "@/lib/utils";
@@ -120,37 +106,7 @@ export default function Dashboard() {
     return Array.from(years).sort((a, b) => b.localeCompare(a));
   }, [allTransactions]);
 
-  // Filters apply ONLY to the Monthly Overview section
-  const filteredTransactions = useMemo(() => {
-    if (!allTransactions) return [];
-
-    return allTransactions.filter(tx => {
-      // 1. Date Filter
-      if (tx.transactionDate) {
-        const d = new Date(tx.transactionDate);
-        if (dateFilterType === 'monthly') {
-          if (d.getMonth().toString() !== viewMonth || d.getFullYear().toString() !== viewYear) return false;
-        } else if (dateFilterType === 'yearly') {
-          if (d.getFullYear().toString() !== viewYear) return false;
-        }
-      }
-
-      // 2. Type Filter
-      if (typeFilter !== 'all') {
-        const t = tx.transactionType;
-        if (typeFilter === 'deposits' && t !== 'Deposit') return false;
-        if (typeFilter === 'loans' && t !== 'LoanDisbursement') return false;
-        if (typeFilter === 'interest' && t !== 'InterestPayment') return false;
-        if (typeFilter === 'repayments' && !['PrincipalRepayment', 'FinePayment'].includes(t)) return false;
-        if (typeFilter === 'expenses' && t !== 'GeneralExpense') return false;
-        if (typeFilter === 'waived' && t !== 'LoanWaived') return false;
-      }
-
-      return true;
-    });
-  }, [allTransactions, dateFilterType, typeFilter, viewMonth, viewYear]);
-
-  // Global stats for the top summary cards
+  // Global stats for the top summary cards - ALWAYS TOTAL DATA
   const globalStats = useMemo(() => {
     const s = {
       deposits: 0,
@@ -194,13 +150,44 @@ export default function Dashboard() {
     return s;
   }, [allTransactions, loans, members]);
 
-  // Overview stats based on the UI filters
+  // Filters apply ONLY to the Monthly Overview section
+  const filteredTransactions = useMemo(() => {
+    if (!allTransactions) return [];
+
+    return allTransactions.filter(tx => {
+      // 1. Date Filter
+      if (tx.transactionDate) {
+        const d = new Date(tx.transactionDate);
+        if (dateFilterType === 'monthly') {
+          if (d.getMonth().toString() !== viewMonth || d.getFullYear().toString() !== viewYear) return false;
+        } else if (dateFilterType === 'yearly') {
+          if (d.getFullYear().toString() !== viewYear) return false;
+        }
+      }
+
+      // 2. Type Filter
+      if (typeFilter !== 'all') {
+        const t = tx.transactionType;
+        if (typeFilter === 'deposits' && t !== 'Deposit') return false;
+        if (typeFilter === 'loans' && t !== 'LoanDisbursement') return false;
+        if (typeFilter === 'interest' && t !== 'InterestPayment') return false;
+        if (typeFilter === 'repayments' && !['PrincipalRepayment', 'FinePayment'].includes(t)) return false;
+        if (typeFilter === 'expenses' && t !== 'GeneralExpense') return false;
+        if (typeFilter === 'waived' && t !== 'LoanWaived') return false;
+      }
+
+      return true;
+    });
+  }, [allTransactions, dateFilterType, typeFilter, viewMonth, viewYear]);
+
+  // Overview stats based on the UI filters - ONLY for Monthly Overview Card
   const overviewStats = useMemo(() => {
     const s = {
       deposits: 0,
       loans: 0,
       interest: 0,
       principalRecovered: 0,
+      closingBalance: 0
     };
 
     filteredTransactions.forEach(tx => {
@@ -213,8 +200,27 @@ export default function Dashboard() {
       if (t === 'PrincipalRepayment') s.principalRecovered += amt;
     });
 
+    // Calculate Closing Balance (Cumulative Fund at the end of the selected period)
+    if (allTransactions) {
+      const periodEnd = dateFilterType === 'monthly'
+        ? new Date(parseInt(viewYear), parseInt(viewMonth) + 1, 0, 23, 59, 59)
+        : dateFilterType === 'yearly'
+          ? new Date(parseInt(viewYear), 11, 31, 23, 59, 59)
+          : new Date();
+
+      s.closingBalance = allTransactions.reduce((acc, tx) => {
+        if (!tx.transactionDate) return acc;
+        const d = new Date(tx.transactionDate);
+        
+        // If we are looking at a specific time range, only include transactions up to that date
+        if (dateFilterType !== 'all' && d > periodEnd) return acc;
+
+        return tx.balanceImpact === 'Credit' ? acc + (tx.amount || 0) : acc - (tx.amount || 0);
+      }, 0);
+    }
+
     return s;
-  }, [filteredTransactions]);
+  }, [filteredTransactions, allTransactions, dateFilterType, viewMonth, viewYear]);
 
   if (isUserLoading) {
     return (
@@ -237,7 +243,7 @@ export default function Dashboard() {
           <div className="flex flex-wrap items-center gap-3 p-4 bg-white rounded-xl shadow-sm border border-slate-200">
             <div className="flex items-center gap-2 mr-4">
               <Filter className="h-4 w-4 text-primary" />
-              <span className="text-xs font-bold uppercase tracking-wider text-slate-500">Filter Controls</span>
+              <span className="text-xs font-bold uppercase tracking-wider text-slate-500">Overview Filters</span>
             </div>
 
             <Select value={dateFilterType} onValueChange={setDateFilterType}>
@@ -292,46 +298,46 @@ export default function Dashboard() {
           </div>
         </header>
 
-        {/* Top Summary Row - Displays Global Data */}
+        {/* Top Summary Row - Displays GLOBAL ALL-TIME Data */}
         <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-4">
           <StatCard 
             title="Total Remaining Fund" 
             value={`₹ ${Math.abs(globalStats.remaining).toLocaleString()}`}
             icon={Wallet}
             iconClassName="bg-blue-50 text-[#3f51b5]"
-            description="Cash available in group"
+            description="Global cash available"
           />
           <StatCard 
             title="Total Deposits" 
             value={`₹ ${Math.abs(globalStats.deposits).toLocaleString()}`}
             icon={PiggyBank}
             iconClassName="bg-indigo-50 text-[#3f51b5]"
-            description="From active & closed members"
+            description="Global collections"
           />
           <StatCard 
             title="Total Loan Disbursed" 
             value={`₹ ${Math.abs(globalStats.loans).toLocaleString()}`}
             icon={Landmark}
             iconClassName="bg-blue-50 text-[#3f51b5]"
-            description="To active & closed members"
+            description="Global disbursements"
           />
           <StatCard 
             title="Total Interest Earned" 
             value={`₹ ${Math.abs(globalStats.interest).toLocaleString()}`}
             icon={Scroll}
             iconClassName="bg-indigo-50 text-[#3f51b5]"
-            description="From loan repayments"
+            description="Global interest income"
           />
         </div>
 
-        {/* Second Summary Row - Displays Global Data */}
+        {/* Second Summary Row - Displays GLOBAL ALL-TIME Data */}
         <div className="grid gap-6 md:grid-cols-3">
           <StatCard 
             title="Total Members" 
             value={members?.length || 0}
             icon={Users}
             iconClassName="bg-slate-50 text-[#3f51b5]"
-            description="Total members in group"
+            description="Total registrations"
           />
           
           <Card className="border-none shadow-sm bg-white overflow-hidden">
@@ -367,29 +373,29 @@ export default function Dashboard() {
             value={`₹ ${globalStats.outstanding.toLocaleString()}`}
             icon={Scale}
             iconClassName="bg-slate-50 text-[#3f51b5]"
-            description="Pending loan recovery"
+            description="Total pending recovery"
           />
         </div>
 
-        {/* Monthly Overview Card - Displays Filtered Data */}
+        {/* Overview Section - Affected by Filter Controls */}
         <div className="grid gap-6 lg:grid-cols-2">
           <Card className="border-none shadow-sm bg-white">
             <CardHeader className="flex flex-row items-center justify-between pb-2">
               <div>
                 <CardTitle className="text-lg font-bold text-[#1a1f36]">Monthly Overview</CardTitle>
                 <p className="text-xs text-muted-foreground mt-1">
-                  Summary for {dateFilterType === 'all' ? 'All Time' : `${months.find(m => m.value === viewMonth)?.label} ${viewYear}`}
+                  Scope: {dateFilterType === 'all' ? 'All Time' : `${months.find(m => m.value === viewMonth)?.label} ${viewYear}`}
                 </p>
               </div>
               <CalendarCheck className="h-5 w-5 text-[#3f51b5]" />
             </CardHeader>
             <CardContent className="space-y-4 pt-4">
               <div className="flex justify-between items-center text-sm border-b pb-2">
-                <span className="text-slate-600 font-medium">Total Amount Deposits</span>
+                <span className="text-slate-600 font-medium">Monthly Deposits</span>
                 <span className="font-bold">₹ {overviewStats.deposits.toLocaleString()}</span>
               </div>
               <div className="flex justify-between items-center text-sm border-b pb-2">
-                <span className="text-slate-600 font-medium">Amount Given as Loan</span>
+                <span className="text-slate-600 font-medium">Loans Disbursed</span>
                 <span className="font-bold">₹ {overviewStats.loans.toLocaleString()}</span>
               </div>
               <div className="flex justify-between items-center text-sm border-b pb-2">
@@ -399,6 +405,15 @@ export default function Dashboard() {
               <div className="flex justify-between items-center text-sm border-b pb-2">
                 <span className="text-slate-600 font-medium">Principal Recovered</span>
                 <span className="font-bold">₹ {overviewStats.principalRecovered.toLocaleString()}</span>
+              </div>
+              
+              {/* Closing Balance Section */}
+              <div className="flex justify-between items-center text-sm pt-4 border-t border-dashed mt-2 bg-blue-50/50 p-2 rounded-md">
+                <span className="text-primary font-bold">Closing Balance</span>
+                <div className="text-right">
+                  <span className="font-bold text-primary text-base">₹ {overviewStats.closingBalance.toLocaleString()}</span>
+                  <p className="text-[10px] text-muted-foreground uppercase font-bold">End of Period</p>
+                </div>
               </div>
             </CardContent>
           </Card>
