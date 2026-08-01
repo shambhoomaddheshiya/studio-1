@@ -23,7 +23,8 @@ import {
   Trash2, 
   Edit, 
   UserX, 
-  UserCheck 
+  UserCheck,
+  HandCoins
 } from "lucide-react";
 import Link from "next/link";
 import { 
@@ -70,6 +71,13 @@ export default function MembersPage() {
 
   const { data: allDeposits } = useCollection(depositEntriesRef);
 
+  const loansRef = useMemoFirebase(() => {
+    if (!db || !user) return null;
+    return collection(db, 'loans');
+  }, [db, user]);
+
+  const { data: allLoans } = useCollection(loansRef);
+
   const calculateDynamicScore = (member: any) => {
     if (!member) return 10;
     
@@ -102,6 +110,13 @@ export default function MembersPage() {
     if (missedCount === 2) return 7;
     if (missedCount >= 3) return 5;
     return 10;
+  };
+
+  const getMemberOutstandingLoan = (memberId: string) => {
+    if (!allLoans) return 0;
+    return allLoans
+      .filter(l => l.memberId === memberId && l.status === 'Active')
+      .reduce((acc, l) => acc + (l.outstandingPrincipal || 0) + (l.outstandingInterest || 0), 0);
   };
 
   // Alphabetical sorting for member table
@@ -207,6 +222,7 @@ export default function MembersPage() {
                     <TableHead>Name</TableHead>
                     <TableHead>Contact</TableHead>
                     <TableHead>Status</TableHead>
+                    <TableHead>Active Loan</TableHead>
                     <TableHead className="text-right">Credit Rating</TableHead>
                     <TableHead className="w-[80px]"></TableHead>
                   </TableRow>
@@ -214,6 +230,7 @@ export default function MembersPage() {
                 <TableBody>
                   {members.map((member) => {
                     const dynamicScore = calculateDynamicScore(member);
+                    const outstandingLoan = getMemberOutstandingLoan(member.id);
                     return (
                       <TableRow key={member.id} className="hover:bg-muted/30 transition-colors">
                         <TableCell className="font-mono text-xs font-bold text-primary">
@@ -229,6 +246,16 @@ export default function MembersPage() {
                           <Badge variant={member.status === 'Active' ? 'default' : 'secondary'} className={member.status === 'Active' ? 'bg-green-100 text-green-700 hover:bg-green-100' : ''}>
                             {member.status}
                           </Badge>
+                        </TableCell>
+                        <TableCell>
+                          {outstandingLoan > 0 ? (
+                            <div className="flex items-center gap-1.5 font-bold text-destructive">
+                              <HandCoins className="h-3.5 w-3.5" />
+                              ₹{outstandingLoan.toLocaleString()}
+                            </div>
+                          ) : (
+                            <span className="text-muted-foreground text-xs">—</span>
+                          )}
                         </TableCell>
                         <TableCell className="text-right font-medium">
                           <div className="flex flex-col items-end">
@@ -292,7 +319,7 @@ export default function MembersPage() {
                   })}
                   {(members.length === 0) && (
                     <TableRow>
-                      <TableCell colSpan={6} className="h-24 text-center text-muted-foreground">
+                      <TableCell colSpan={7} className="h-24 text-center text-muted-foreground">
                         {searchTerm ? "No members match your search." : "No members found. Add your first member to get started."}
                       </TableCell>
                     </TableRow>
