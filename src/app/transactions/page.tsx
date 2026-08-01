@@ -7,7 +7,23 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { Plus, Download, Filter, Search, Loader2, MoreHorizontal, Edit, Trash2, Calendar, IndianRupee, FileText } from "lucide-react";
+import { 
+  Plus, 
+  Download, 
+  Search, 
+  Loader2, 
+  MoreHorizontal, 
+  Edit, 
+  Trash2, 
+  Calendar, 
+  IndianRupee, 
+  FileText,
+  Users,
+  HandCoins,
+  ArrowRightLeft,
+  Receipt,
+  Coins
+} from "lucide-react";
 import { Input } from "@/components/ui/input";
 import Link from "next/link";
 import { cn } from "@/lib/utils";
@@ -48,6 +64,7 @@ import {
 } from "@/components/ui/select";
 import { deleteDocumentNonBlocking, updateDocumentNonBlocking } from "@/firebase/non-blocking-updates";
 import { useToast } from "@/hooks/use-toast";
+import { StatCard } from "@/components/dashboard/StatCard";
 
 const months = [
   { value: "0", label: "January" },
@@ -158,6 +175,41 @@ export default function TransactionsPage() {
     });
   }, [rawTransactions, searchTerm, typeFilter, dateFilterType, viewMonth, viewYear]);
 
+  const stats = React.useMemo(() => {
+    const s = {
+      deposits: 0,
+      loans: 0,
+      repayments: 0,
+      expenses: 0,
+      remaining: 0,
+      allTimeDeposits: 0
+    };
+
+    transactions.forEach(tx => {
+      const amt = tx.amount || 0;
+      const t = tx.transactionType;
+      const impact = tx.balanceImpact;
+
+      if (t === 'Deposit') s.deposits += amt;
+      if (t === 'LoanDisbursement') s.loans += amt;
+      if (['PrincipalRepayment', 'FinePayment'].includes(t)) s.repayments += amt;
+      if (t === 'GeneralExpense') s.expenses += amt;
+
+      if (impact === 'Credit') s.remaining += amt;
+      else s.remaining -= amt;
+    });
+
+    if (rawTransactions) {
+      rawTransactions.forEach(tx => {
+        if (tx.transactionType === 'Deposit') {
+          s.allTimeDeposits += (tx.amount || 0);
+        }
+      });
+    }
+
+    return s;
+  }, [transactions, rawTransactions]);
+
   const handleDelete = async () => {
     if (txToDelete && db) {
       const docRef = doc(db, 'transactions', txToDelete.id);
@@ -254,6 +306,45 @@ export default function TransactionsPage() {
             </Button>
           </div>
         </header>
+
+        <div className="grid gap-4 md:grid-cols-3 lg:grid-cols-6">
+          <StatCard 
+            title="Filtered Deposits" 
+            value={`₹${stats.deposits.toLocaleString()}`}
+            icon={Users}
+            iconClassName="bg-cyan-100 text-cyan-600"
+          />
+          <StatCard 
+            title="Filtered Repayments" 
+            value={`₹${stats.repayments.toLocaleString()}`}
+            icon={ArrowRightLeft}
+            iconClassName="bg-emerald-100 text-emerald-600"
+          />
+          <StatCard 
+            title="Filtered Loans" 
+            value={`₹${stats.loans.toLocaleString()}`}
+            icon={HandCoins}
+            iconClassName="bg-indigo-100 text-indigo-600"
+          />
+          <StatCard 
+            title="Filtered Expenses" 
+            value={`₹${stats.expenses.toLocaleString()}`}
+            icon={Receipt}
+            iconClassName="bg-rose-100 text-rose-600"
+          />
+          <StatCard 
+            title="Total Remaining Fund" 
+            value={`₹${stats.remaining.toLocaleString()}`}
+            icon={Coins}
+            iconClassName="bg-blue-100 text-primary"
+          />
+          <StatCard 
+            title="Total Deposits" 
+            value={`₹${stats.allTimeDeposits.toLocaleString()}`}
+            icon={Users}
+            iconClassName="bg-slate-100 text-slate-600"
+          />
+        </div>
 
         <Card className="border-none shadow-sm overflow-hidden">
           <div className="p-4 border-b space-y-4 bg-white">
