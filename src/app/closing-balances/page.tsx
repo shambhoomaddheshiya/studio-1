@@ -1,3 +1,4 @@
+
 "use client"
 
 import React, { useMemo } from "react";
@@ -10,7 +11,7 @@ import {
   TableHeader, 
   TableRow 
 } from "@/components/ui/table";
-import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
+import { Card } from "@/components/ui/card";
 import { 
   Loader2, 
   TrendingUp, 
@@ -48,12 +49,12 @@ export default function ClosingBalancesPage() {
     const targetYear = now.getFullYear();
     const targetMonth = now.getMonth();
 
-    // Loop through each month from the start to the current month
+    // Loop through each month from the start to the current month to show the running balance
     while (currentYear < targetYear || (currentYear === targetYear && currentMonth <= targetMonth)) {
       const monthEndDate = new Date(currentYear, currentMonth + 1, 0, 23, 59, 59);
       
-      // Calculate closing balance for this month (Cumulative)
-      const balance = allTransactions.reduce((acc, tx) => {
+      // CUMULATIVE: Calculate closing balance for this month by summing ALL transactions up to this date
+      const closingBalance = allTransactions.reduce((acc, tx) => {
         if (!tx.transactionDate) return acc;
         const txDate = new Date(tx.transactionDate);
         if (txDate > monthEndDate) return acc;
@@ -61,7 +62,7 @@ export default function ClosingBalancesPage() {
         return tx.balanceImpact === 'Credit' ? acc + (tx.amount || 0) : acc - (tx.amount || 0);
       }, 0);
 
-      // Calculate month-only stats
+      // PERIOD-SPECIFIC: Calculate inflow and outflow for this month ONLY
       const monthStats = allTransactions.reduce((acc, tx) => {
         if (!tx.transactionDate) return acc;
         const txDate = new Date(tx.transactionDate);
@@ -77,7 +78,7 @@ export default function ClosingBalancesPage() {
         year: currentYear,
         month: currentMonth,
         monthName: new Date(currentYear, currentMonth).toLocaleString('default', { month: 'long' }),
-        closingBalance: balance,
+        closingBalance: closingBalance,
         inflow: monthStats.inflow,
         outflow: monthStats.outflow,
         netChange: monthStats.inflow - monthStats.outflow
@@ -91,7 +92,7 @@ export default function ClosingBalancesPage() {
       }
     }
 
-    return balances.reverse(); // Show newest months first
+    return balances.reverse(); // Show newest months first for convenience
   }, [allTransactions]);
 
   if (isUserLoading) {
@@ -113,14 +114,14 @@ export default function ClosingBalancesPage() {
               <Scale className="h-8 w-8 text-primary" />
             </div>
             <div>
-              <h1 className="text-3xl font-bold tracking-tight text-primary font-headline">Monthly Closing Balances</h1>
-              <p className="text-muted-foreground">Track the cumulative growth of your group fund month by month.</p>
+              <h1 className="text-3xl font-bold tracking-tight text-primary font-headline">Monthly Closing Balance</h1>
+              <p className="text-muted-foreground text-sm">A cumulative running balance tracking the total group fund growth month by month.</p>
             </div>
           </div>
         </header>
 
         <Card className="border-none shadow-sm overflow-hidden">
-          <div className="relative min-h-[400px]">
+          <div className="relative min-h-[400px] bg-white">
             {isLoading ? (
               <div className="absolute inset-0 flex items-center justify-center">
                 <Loader2 className="h-8 w-8 animate-spin text-primary" />
@@ -130,14 +131,14 @@ export default function ClosingBalancesPage() {
                 <TableHeader>
                   <TableRow className="bg-muted/50">
                     <TableHead className="w-[200px]">Period</TableHead>
-                    <TableHead>Monthly Inflow</TableHead>
-                    <TableHead>Monthly Outflow</TableHead>
+                    <TableHead>Inflow (This Month)</TableHead>
+                    <TableHead>Outflow (This Month)</TableHead>
                     <TableHead>Net Change</TableHead>
-                    <TableHead className="text-right">Closing Balance</TableHead>
+                    <TableHead className="text-right">Cumulative Closing Balance</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {monthlyBalances.map((item, idx) => (
+                  {monthlyBalances.map((item) => (
                     <TableRow key={`${item.year}-${item.month}`} className="hover:bg-muted/30 transition-colors">
                       <TableCell className="font-medium">
                         <div className="flex items-center gap-2">
@@ -146,20 +147,14 @@ export default function ClosingBalancesPage() {
                         </div>
                       </TableCell>
                       <TableCell className="text-primary font-medium">
-                        <div className="flex items-center gap-1">
-                          <TrendingUp className="h-3 w-3" />
-                          ₹{item.inflow.toLocaleString()}
-                        </div>
+                        ₹{item.inflow.toLocaleString()}
                       </TableCell>
                       <TableCell className="text-destructive font-medium">
-                        <div className="flex items-center gap-1">
-                          <TrendingDown className="h-3 w-3" />
-                          ₹{item.outflow.toLocaleString()}
-                        </div>
+                        ₹{item.outflow.toLocaleString()}
                       </TableCell>
                       <TableCell>
                         <span className={cn(
-                          "px-2 py-0.5 rounded text-xs font-bold",
+                          "px-2 py-0.5 rounded text-[10px] font-bold",
                           item.netChange >= 0 ? "bg-green-100 text-green-700" : "bg-red-100 text-red-700"
                         )}>
                           {item.netChange >= 0 ? '+' : ''}₹{item.netChange.toLocaleString()}
@@ -176,7 +171,7 @@ export default function ClosingBalancesPage() {
                   {monthlyBalances.length === 0 && !isLoading && (
                     <TableRow>
                       <TableCell colSpan={5} className="h-32 text-center text-muted-foreground">
-                        No transaction history available to calculate balances.
+                        No transactions recorded yet to calculate monthly balances.
                       </TableCell>
                     </TableRow>
                   )}

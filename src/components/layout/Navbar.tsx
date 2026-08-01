@@ -1,3 +1,4 @@
+
 "use client"
 
 import Link from 'next/link';
@@ -12,7 +13,7 @@ const navItems = [
   { name: 'Loans', href: '/loans', icon: Banknote },
   { name: 'Transactions', href: '/transactions', icon: History },
   { name: 'Reports', href: '/reports', icon: FileText },
-  { name: 'Closing Balances', href: '/closing-balances', icon: Scale },
+  { name: 'Monthly Closing Balance', href: '/closing-balances', icon: Scale },
 ];
 
 export function Navbar() {

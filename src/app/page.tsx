@@ -6,7 +6,6 @@ import { Navbar } from "@/components/layout/Navbar";
 import { StatCard } from "@/components/dashboard/StatCard";
 import { 
   Users, 
-  TrendingUp, 
   Wallet,
   Loader2,
   Landmark,
@@ -30,7 +29,6 @@ import {
 } from "@/components/ui/select";
 import { useFirestore, useCollection, useMemoFirebase, useUser } from "@/firebase";
 import { collection } from "firebase/firestore";
-import { cn } from "@/lib/utils";
 
 const months = [
   { value: "0", label: "January" },
@@ -47,16 +45,6 @@ const months = [
   { value: "11", label: "December" },
 ];
 
-const typeFilters = [
-  { value: "all", label: "All" },
-  { value: "deposits", label: "Deposits" },
-  { value: "loans", label: "Loans" },
-  { value: "interest", label: "Interest" },
-  { value: "repayments", label: "Repayments" },
-  { value: "expenses", label: "Expenses" },
-  { value: "waived", label: "Loan Waived" },
-];
-
 const dateFilters = [
   { value: "all", label: "All Time" },
   { value: "monthly", label: "Monthly" },
@@ -68,7 +56,6 @@ export default function Dashboard() {
   const { user, isUserLoading } = useUser();
 
   const [dateFilterType, setDateFilterType] = useState<string>("monthly");
-  const [typeFilter, setTypeFilter] = useState<string>("all");
   const [viewMonth, setViewMonth] = useState<string>(new Date().getMonth().toString());
   const [viewYear, setViewYear] = useState<string>(new Date().getFullYear().toString());
 
@@ -155,32 +142,19 @@ export default function Dashboard() {
     if (!allTransactions) return [];
 
     return allTransactions.filter(tx => {
-      // 1. Date Filter
-      if (tx.transactionDate) {
-        const d = new Date(tx.transactionDate);
-        if (dateFilterType === 'monthly') {
-          if (d.getMonth().toString() !== viewMonth || d.getFullYear().toString() !== viewYear) return false;
-        } else if (dateFilterType === 'yearly') {
-          if (d.getFullYear().toString() !== viewYear) return false;
-        }
+      if (!tx.transactionDate) return false;
+      const d = new Date(tx.transactionDate);
+      
+      if (dateFilterType === 'monthly') {
+        if (d.getMonth().toString() !== viewMonth || d.getFullYear().toString() !== viewYear) return false;
+      } else if (dateFilterType === 'yearly') {
+        if (d.getFullYear().toString() !== viewYear) return false;
       }
-
-      // 2. Type Filter
-      if (typeFilter !== 'all') {
-        const t = tx.transactionType;
-        if (typeFilter === 'deposits' && t !== 'Deposit') return false;
-        if (typeFilter === 'loans' && t !== 'LoanDisbursement') return false;
-        if (typeFilter === 'interest' && t !== 'InterestPayment') return false;
-        if (typeFilter === 'repayments' && !['PrincipalRepayment', 'FinePayment'].includes(t)) return false;
-        if (typeFilter === 'expenses' && t !== 'GeneralExpense') return false;
-        if (typeFilter === 'waived' && t !== 'LoanWaived') return false;
-      }
-
       return true;
     });
-  }, [allTransactions, dateFilterType, typeFilter, viewMonth, viewYear]);
+  }, [allTransactions, dateFilterType, viewMonth, viewYear]);
 
-  // Overview stats based on the UI filters - ONLY for Monthly Overview Card
+  // Overview stats for the specific time window
   const overviewStats = useMemo(() => {
     const s = {
       deposits: 0,
@@ -200,7 +174,7 @@ export default function Dashboard() {
       if (t === 'PrincipalRepayment') s.principalRecovered += amt;
     });
 
-    // Calculate Closing Balance (Cumulative Fund at the end of the selected period)
+    // CUMULATIVE: Calculate Closing Balance at the end of the selected period
     if (allTransactions) {
       const periodEnd = dateFilterType === 'monthly'
         ? new Date(parseInt(viewYear), parseInt(viewMonth) + 1, 0, 23, 59, 59)
@@ -212,7 +186,7 @@ export default function Dashboard() {
         if (!tx.transactionDate) return acc;
         const d = new Date(tx.transactionDate);
         
-        // If we are looking at a specific time range, only include transactions up to that date
+        // Sum everything up to the period end
         if (dateFilterType !== 'all' && d > periodEnd) return acc;
 
         return tx.balanceImpact === 'Credit' ? acc + (tx.amount || 0) : acc - (tx.amount || 0);
@@ -222,7 +196,7 @@ export default function Dashboard() {
     return s;
   }, [filteredTransactions, allTransactions, dateFilterType, viewMonth, viewYear]);
 
-  if (isUserLoading) {
+  if (isUserLoading || txLoading) {
     return (
       <div className="min-h-screen flex items-center justify-center">
         <Loader2 className="h-8 w-8 animate-spin text-primary" />
@@ -282,19 +256,6 @@ export default function Dashboard() {
                 </SelectContent>
               </Select>
             )}
-
-            <div className="h-6 w-px bg-slate-200 mx-2" />
-
-            <Select value={typeFilter} onValueChange={setTypeFilter}>
-              <SelectTrigger className="w-[160px] h-9 text-sm bg-slate-50">
-                <SelectValue placeholder="Transaction Type" />
-              </SelectTrigger>
-              <SelectContent>
-                {typeFilters.map(f => (
-                  <SelectItem key={f.value} value={f.value}>{f.label}</SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
           </div>
         </header>
 
@@ -302,28 +263,28 @@ export default function Dashboard() {
         <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-4">
           <StatCard 
             title="Total Remaining Fund" 
-            value={`₹ ${Math.abs(globalStats.remaining).toLocaleString()}`}
+            value={`₹${Math.abs(globalStats.remaining).toLocaleString()}`}
             icon={Wallet}
             iconClassName="bg-blue-50 text-[#3f51b5]"
             description="Global cash available"
           />
           <StatCard 
             title="Total Deposits" 
-            value={`₹ ${Math.abs(globalStats.deposits).toLocaleString()}`}
+            value={`₹${Math.abs(globalStats.deposits).toLocaleString()}`}
             icon={PiggyBank}
             iconClassName="bg-indigo-50 text-[#3f51b5]"
             description="Global collections"
           />
           <StatCard 
             title="Total Loan Disbursed" 
-            value={`₹ ${Math.abs(globalStats.loans).toLocaleString()}`}
+            value={`₹${Math.abs(globalStats.loans).toLocaleString()}`}
             icon={Landmark}
             iconClassName="bg-blue-50 text-[#3f51b5]"
             description="Global disbursements"
           />
           <StatCard 
             title="Total Interest Earned" 
-            value={`₹ ${Math.abs(globalStats.interest).toLocaleString()}`}
+            value={`₹${Math.abs(globalStats.interest).toLocaleString()}`}
             icon={Scroll}
             iconClassName="bg-indigo-50 text-[#3f51b5]"
             description="Global interest income"
@@ -370,7 +331,7 @@ export default function Dashboard() {
 
           <StatCard 
             title="Outstanding Loan" 
-            value={`₹ ${globalStats.outstanding.toLocaleString()}`}
+            value={`₹${globalStats.outstanding.toLocaleString()}`}
             icon={Scale}
             iconClassName="bg-slate-50 text-[#3f51b5]"
             description="Total pending recovery"
@@ -392,27 +353,27 @@ export default function Dashboard() {
             <CardContent className="space-y-4 pt-4">
               <div className="flex justify-between items-center text-sm border-b pb-2">
                 <span className="text-slate-600 font-medium">Monthly Deposits</span>
-                <span className="font-bold">₹ {overviewStats.deposits.toLocaleString()}</span>
+                <span className="font-bold">₹{overviewStats.deposits.toLocaleString()}</span>
               </div>
               <div className="flex justify-between items-center text-sm border-b pb-2">
                 <span className="text-slate-600 font-medium">Loans Disbursed</span>
-                <span className="font-bold">₹ {overviewStats.loans.toLocaleString()}</span>
+                <span className="font-bold">₹{overviewStats.loans.toLocaleString()}</span>
               </div>
               <div className="flex justify-between items-center text-sm border-b pb-2">
                 <span className="text-slate-600 font-medium">Interest Received</span>
-                <span className="font-bold">₹ {overviewStats.interest.toLocaleString()}</span>
+                <span className="font-bold">₹{overviewStats.interest.toLocaleString()}</span>
               </div>
               <div className="flex justify-between items-center text-sm border-b pb-2">
                 <span className="text-slate-600 font-medium">Principal Recovered</span>
-                <span className="font-bold">₹ {overviewStats.principalRecovered.toLocaleString()}</span>
+                <span className="font-bold">₹{overviewStats.principalRecovered.toLocaleString()}</span>
               </div>
               
-              {/* Closing Balance Section */}
+              {/* Closing Balance Section - Strictly Cumulative */}
               <div className="flex justify-between items-center text-sm pt-4 border-t border-dashed mt-2 bg-blue-50/50 p-2 rounded-md">
-                <span className="text-primary font-bold">Closing Balance</span>
+                <span className="text-primary font-bold">Closing Balance (Carry-Forward)</span>
                 <div className="text-right">
-                  <span className="font-bold text-primary text-base">₹ {overviewStats.closingBalance.toLocaleString()}</span>
-                  <p className="text-[10px] text-muted-foreground uppercase font-bold">End of Period</p>
+                  <span className="font-bold text-primary text-base">₹{overviewStats.closingBalance.toLocaleString()}</span>
+                  <p className="text-[10px] text-muted-foreground uppercase font-bold">End of Period Total</p>
                 </div>
               </div>
             </CardContent>
