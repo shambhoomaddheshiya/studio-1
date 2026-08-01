@@ -50,29 +50,48 @@ import { deleteDocumentNonBlocking, updateDocumentNonBlocking } from "@/firebase
 import { useToast } from "@/hooks/use-toast";
 
 const months = [
-  { value: "All", label: "All Months" },
-  { value: "1", label: "January" },
-  { value: "2", label: "February" },
-  { value: "3", label: "March" },
-  { value: "4", label: "April" },
-  { value: "5", label: "May" },
-  { value: "6", label: "June" },
-  { value: "7", label: "July" },
-  { value: "8", label: "August" },
-  { value: "9", label: "September" },
-  { value: "10", label: "October" },
-  { value: "11", label: "November" },
-  { value: "12", label: "December" },
+  { value: "0", label: "January" },
+  { value: "1", label: "February" },
+  { value: "2", label: "March" },
+  { value: "3", label: "April" },
+  { value: "4", label: "May" },
+  { value: "5", label: "June" },
+  { value: "6", label: "July" },
+  { value: "7", label: "August" },
+  { value: "8", label: "September" },
+  { value: "9", label: "October" },
+  { value: "10", label: "November" },
+  { value: "11", label: "December" },
+];
+
+const typeFilters = [
+  { value: "all", label: "All Types" },
+  { value: "deposits", label: "Deposits" },
+  { value: "loans", label: "Loans" },
+  { value: "interest", label: "Interest" },
+  { value: "repayments", label: "Repayments" },
+  { value: "expenses", label: "Expenses" },
+  { value: "waived", label: "Loan Waived" },
+];
+
+const dateFilters = [
+  { value: "all", label: "All Time" },
+  { value: "monthly", label: "Monthly" },
+  { value: "yearly", label: "Yearly" },
 ];
 
 export default function TransactionsPage() {
   const db = useFirestore();
   const { user, isUserLoading } = useUser();
   const { toast } = useToast();
+  
+  // States
   const [searchTerm, setSearchTerm] = useState("");
-  const [activeFilter, setActiveFilter] = useState("All");
-  const [selectedMonth, setSelectedMonth] = useState("All");
-  const [selectedYear, setSelectedYear] = useState("All");
+  const [dateFilterType, setDateFilterType] = useState<string>("all");
+  const [typeFilter, setTypeFilter] = useState<string>("all");
+  const [viewMonth, setViewMonth] = useState<string>(new Date().getMonth().toString());
+  const [viewYear, setViewYear] = useState<string>(new Date().getFullYear().toString());
+  
   const [txToDelete, setTxToDelete] = useState<any | null>(null);
   const [txToEdit, setTxToEdit] = useState<any | null>(null);
   const [isUpdating, setIsUpdating] = useState(false);
@@ -92,65 +111,59 @@ export default function TransactionsPage() {
         years.add(new Date(tx.transactionDate).getFullYear().toString());
       }
     });
+    const current = new Date().getFullYear().toString();
+    years.add(current);
     return Array.from(years).sort((a, b) => b.localeCompare(a));
   }, [rawTransactions]);
 
   const transactions = React.useMemo(() => {
     if (!rawTransactions) return [];
     
-    let filtered = [...rawTransactions];
+    return rawTransactions.filter(tx => {
+      // 1. Search Filter
+      if (searchTerm) {
+        const lowerSearch = searchTerm.toLowerCase();
+        const matches = (tx.memberName || "").toLowerCase().includes(lowerSearch) ||
+                      (tx.id || "").toLowerCase().includes(lowerSearch) ||
+                      (tx.transactionType || "").toLowerCase().includes(lowerSearch) ||
+                      (tx.comment || "").toLowerCase().includes(lowerSearch);
+        if (!matches) return false;
+      }
 
-    if (searchTerm) {
-      const lowerSearch = searchTerm.toLowerCase();
-      filtered = filtered.filter(tx => 
-        tx.memberName?.toLowerCase().includes(lowerSearch) || 
-        tx.id?.toLowerCase().includes(lowerSearch) ||
-        tx.transactionType?.toLowerCase().includes(lowerSearch) ||
-        tx.comment?.toLowerCase().includes(lowerSearch)
-      );
-    }
+      // 2. Type Filter
+      if (typeFilter !== 'all') {
+        const t = tx.transactionType;
+        if (typeFilter === 'deposits' && t !== 'Deposit') return false;
+        if (typeFilter === 'loans' && t !== 'LoanDisbursement') return false;
+        if (typeFilter === 'interest' && t !== 'InterestPayment') return false;
+        if (typeFilter === 'repayments' && !['PrincipalRepayment', 'FinePayment'].includes(t)) return false;
+        if (typeFilter === 'expenses' && t !== 'GeneralExpense') return false;
+        if (typeFilter === 'waived' && t !== 'LoanWaived') return false;
+      }
 
-    if (activeFilter !== "All") {
-      filtered = filtered.filter(tx => {
-        if (activeFilter === "Deposits") return tx.transactionType === 'Deposit';
-        if (activeFilter === "Loans") return tx.transactionType === 'LoanDisbursement';
-        if (activeFilter === "Repayments") {
-          return ['PrincipalRepayment', 'InterestPayment', 'FinePayment'].includes(tx.transactionType);
+      // 3. Date Filter
+      if (tx.transactionDate) {
+        const d = new Date(tx.transactionDate);
+        if (dateFilterType === 'monthly') {
+          if (d.getMonth().toString() !== viewMonth || d.getFullYear().toString() !== viewYear) return false;
+        } else if (dateFilterType === 'yearly') {
+          if (d.getFullYear().toString() !== viewYear) return false;
         }
-        return true;
-      });
-    }
+      }
 
-    if (selectedMonth !== "All") {
-      filtered = filtered.filter(tx => {
-        if (!tx.transactionDate) return false;
-        const txDate = new Date(tx.transactionDate);
-        return (txDate.getMonth() + 1).toString() === selectedMonth;
-      });
-    }
-
-    if (selectedYear !== "All") {
-      filtered = filtered.filter(tx => {
-        if (!tx.transactionDate) return false;
-        const txDate = new Date(tx.transactionDate);
-        return txDate.getFullYear().toString() === selectedYear;
-      });
-    }
-
-    return filtered.sort((a, b) => {
+      return true;
+    }).sort((a, b) => {
       const dateA = new Date(a.transactionDate || 0).getTime();
       const dateB = new Date(b.transactionDate || 0).getTime();
       return dateB - dateA;
     });
-  }, [rawTransactions, searchTerm, activeFilter, selectedMonth, selectedYear]);
+  }, [rawTransactions, searchTerm, typeFilter, dateFilterType, viewMonth, viewYear]);
 
   const handleDelete = async () => {
     if (txToDelete && db) {
-      // 1. Delete the ledger entry (this updates the dashboard balance)
       const docRef = doc(db, 'transactions', txToDelete.id);
       deleteDocumentNonBlocking(docRef);
 
-      // 2. Cascading delete of linked business entity (Loan, DepositEntry, etc.)
       if (txToDelete.relatedEntityId && txToDelete.relatedEntityType) {
         const collectionName = 
           txToDelete.relatedEntityType === 'Loan' ? "loans" :
@@ -161,7 +174,6 @@ export default function TransactionsPage() {
           const entityRef = doc(db, collectionName, txToDelete.relatedEntityId);
           deleteDocumentNonBlocking(entityRef);
           
-          // If it was a loan, also clean up associated repayments
           if (collectionName === 'loans') {
             try {
               const repaymentsCol = collection(db, 'repaymentEntries');
@@ -229,9 +241,11 @@ export default function TransactionsPage() {
             <p className="text-muted-foreground">Track all deposits, loans, and repayments globally.</p>
           </div>
           <div className="flex gap-2">
-            <Button variant="outline">
-              <Download className="h-4 w-4 mr-2" />
-              Report
+            <Button variant="outline" asChild>
+              <Link href="/reports">
+                <Download className="h-4 w-4 mr-2" />
+                Report
+              </Link>
             </Button>
             <Button asChild>
               <Link href="/transactions/new">
@@ -254,68 +268,65 @@ export default function TransactionsPage() {
                   onChange={(e) => setSearchTerm(e.target.value)}
                 />
               </div>
-              <div className="flex items-center gap-2 w-full md:w-auto">
-                <Select value={selectedMonth} onValueChange={setSelectedMonth}>
-                  <SelectTrigger className="w-full md:w-[150px]">
-                    <SelectValue placeholder="Month" />
+              
+              <div className="flex flex-wrap items-center gap-2 w-full md:w-auto">
+                <Select value={dateFilterType} onValueChange={setDateFilterType}>
+                  <SelectTrigger className="w-[130px] h-9 text-sm">
+                    <SelectValue placeholder="Date Scope" />
                   </SelectTrigger>
                   <SelectContent>
-                    {months.map(m => (
-                      <SelectItem key={m.value} value={m.value}>{m.label}</SelectItem>
+                    {dateFilters.map(f => (
+                      <SelectItem key={f.value} value={f.value}>{f.label}</SelectItem>
                     ))}
                   </SelectContent>
                 </Select>
-                <Select value={selectedYear} onValueChange={setSelectedYear}>
-                  <SelectTrigger className="w-full md:w-[120px]">
-                    <SelectValue placeholder="Year" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="All">All Years</SelectItem>
-                    {availableYears.map(year => (
-                      <SelectItem key={year} value={year}>{year}</SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
+
+                {(dateFilterType === 'monthly' || dateFilterType === 'yearly') && (
+                  <Select value={viewYear} onValueChange={setViewYear}>
+                    <SelectTrigger className="w-[100px] h-9 text-sm">
+                      <SelectValue placeholder="Year" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {availableYears.map(year => (
+                        <SelectItem key={year} value={year}>{year}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                )}
+
+                {dateFilterType === 'monthly' && (
+                  <Select value={viewMonth} onValueChange={setViewMonth}>
+                    <SelectTrigger className="w-[120px] h-9 text-sm">
+                      <SelectValue placeholder="Month" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {months.map(m => (
+                        <SelectItem key={m.value} value={m.value}>{m.label}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                )}
               </div>
             </div>
 
             <div className="flex items-center gap-2 w-full overflow-x-auto pb-2 md:pb-0 border-t pt-4">
-              <Badge 
-                variant={activeFilter === "All" ? "default" : "outline"} 
-                className="cursor-pointer hover:bg-muted py-1 px-4 transition-all"
-                onClick={() => setActiveFilter("All")}
-              >
-                All Categories
-              </Badge>
-              <Badge 
-                variant={activeFilter === "Deposits" ? "default" : "outline"} 
-                className="cursor-pointer hover:bg-muted py-1 px-4 transition-all"
-                onClick={() => setActiveFilter("Deposits")}
-              >
-                Bulk Deposits
-              </Badge>
-              <Badge 
-                variant={activeFilter === "Loans" ? "default" : "outline"} 
-                className="cursor-pointer hover:bg-muted py-1 px-4 transition-all"
-                onClick={() => setActiveFilter("Loans")}
-              >
-                Loans
-              </Badge>
-              <Badge 
-                variant={activeFilter === "Repayments" ? "default" : "outline"} 
-                className="cursor-pointer hover:bg-muted py-1 px-4 transition-all"
-                onClick={() => setActiveFilter("Repayments")}
-              >
-                Repayments
-              </Badge>
+              {typeFilters.map((filter) => (
+                <Badge 
+                  key={filter.value}
+                  variant={typeFilter === filter.value ? "default" : "outline"} 
+                  className="cursor-pointer hover:bg-muted py-1.5 px-4 transition-all whitespace-nowrap"
+                  onClick={() => setTypeFilter(filter.value)}
+                >
+                  {filter.label}
+                </Badge>
+              ))}
               <div className="h-4 w-px bg-border mx-2" />
               <Button variant="ghost" size="sm" onClick={() => {
                 setSearchTerm("");
-                setActiveFilter("All");
-                setSelectedMonth("All");
-                setSelectedYear("All");
+                setTypeFilter("all");
+                setDateFilterType("all");
               }}>
-                Clear All
+                Clear Filters
               </Button>
             </div>
           </div>
@@ -351,9 +362,9 @@ export default function TransactionsPage() {
                       </TableCell>
                       <TableCell>
                         <Badge variant={
-                          tx.transactionType === 'Deposit' ? 'outline' : 
+                          tx.transactionType === 'Deposit' ? 'secondary' : 
                           tx.transactionType === 'LoanDisbursement' ? 'destructive' : 
-                          'default'
+                          'outline'
                         } className="capitalize">
                           {(tx.transactionType || '').replace(/([A-Z])/g, ' $1').trim()}
                         </Badge>
@@ -401,7 +412,7 @@ export default function TransactionsPage() {
                   {(transactions.length === 0) && (
                     <TableRow>
                       <TableCell colSpan={6} className="h-24 text-center text-muted-foreground">
-                        {searchTerm || activeFilter !== "All" || selectedMonth !== "All" || selectedYear !== "All" ? "No transactions match your criteria." : "No transactions recorded yet."}
+                        No transactions match your criteria.
                       </TableCell>
                     </TableRow>
                   )}
