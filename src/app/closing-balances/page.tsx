@@ -51,22 +51,27 @@ export default function ClosingBalancesPage() {
     while (currentYear < targetYear || (currentYear === targetYear && currentMonth <= targetMonth)) {
       const monthEndDate = new Date(currentYear, currentMonth + 1, 0, 23, 59, 59);
       
-      // CUMULATIVE: Calculate closing balance for this month by summing ALL INFLOWS up to this date
-      // As per instructions, this balance is NOT reduced by outflows/loans.
+      // CUMULATIVE: Calculate closing balance by subtracting Loans from (Deposits + Interest + Repayments)
       const cumulativeBalance = allTransactions.reduce((acc, tx) => {
         if (!tx.transactionDate) return acc;
         const txDate = new Date(tx.transactionDate);
         if (txDate > monthEndDate) return acc;
 
-        // Only count Inflows (Deposits, Interest, Repayments, Fines)
         const type = tx.transactionType;
+        const amt = tx.amount || 0;
+
+        // Add Inflows
         if (['Deposit', 'InterestPayment', 'PrincipalRepayment', 'FinePayment'].includes(type)) {
-          return acc + (tx.amount || 0);
+          return acc + amt;
+        }
+        // Subtract Outflows (Loans and Expenses)
+        if (['LoanDisbursement', 'GeneralExpense', 'LoanWaived'].includes(type)) {
+          return acc - amt;
         }
         return acc;
       }, 0);
 
-      // PERIOD-SPECIFIC: Sum the actual total values for this month as stored in the data
+      // PERIOD-SPECIFIC: Sum the actual total values for this month
       const monthStats = allTransactions.reduce((acc, tx) => {
         if (!tx.transactionDate) return acc;
         const txDate = new Date(tx.transactionDate);
@@ -125,7 +130,7 @@ export default function ClosingBalancesPage() {
             </div>
             <div>
               <h1 className="text-3xl font-bold tracking-tight text-primary font-headline">Monthly Closing Balance</h1>
-              <p className="text-muted-foreground text-sm">Cumulative capital growth tracking total group inflows month by month.</p>
+              <p className="text-muted-foreground text-sm">Cumulative running balance tracking total net growth month by month.</p>
             </div>
           </div>
         </header>
@@ -145,7 +150,7 @@ export default function ClosingBalancesPage() {
                     <TableHead>Monthly Interest</TableHead>
                     <TableHead>Monthly Repayments</TableHead>
                     <TableHead>Monthly Loans</TableHead>
-                    <TableHead className="text-right">Cumulative Balance</TableHead>
+                    <TableHead className="text-right">Closing Balance</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
