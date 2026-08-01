@@ -198,7 +198,6 @@ export default function Dashboard() {
     if (members) {
       s.memberActive = members.filter(m => m.status === 'Active').length;
       s.memberInactive = members.filter(m => m.status === 'Inactive').length;
-      // Note: 'Closed' is often treated as 'Inactive' in this schema, but we show what exists
     }
 
     return s;
@@ -386,68 +385,6 @@ export default function Dashboard() {
                 <span className="text-slate-600 font-medium">Principal Recovered</span>
                 <span className="font-bold">₹ {stats.principalRecovered.toLocaleString()}</span>
               </div>
-            </CardContent>
-          </Card>
-        </div>
-
-        {/* Recent Transactions Table */}
-        <div className="grid gap-6">
-          <Card className="border-none shadow-sm">
-            <CardHeader className="flex flex-row items-center justify-between pb-4 border-b">
-              <div className="flex items-center gap-2">
-                <History className="h-5 w-5 text-primary" />
-                <CardTitle className="text-lg">Recent Ledger Entries</CardTitle>
-              </div>
-            </CardHeader>
-            <CardContent className="p-0">
-              {txLoading ? (
-                <div className="flex justify-center p-12"><Loader2 className="animate-spin text-muted-foreground" /></div>
-              ) : (
-                <Table>
-                  <TableHeader>
-                    <TableRow className="bg-muted/30">
-                      <TableHead>Date</TableHead>
-                      <TableHead>Member</TableHead>
-                      <TableHead>Type</TableHead>
-                      <TableHead>Comment</TableHead>
-                      <TableHead className="text-right">Amount</TableHead>
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {filteredTransactions.map((tx) => (
-                      <TableRow key={tx.id} className="hover:bg-muted/20">
-                        <TableCell className="text-sm">
-                          {tx.transactionDate ? new Date(tx.transactionDate).toLocaleDateString() : '-'}
-                        </TableCell>
-                        <TableCell className="font-medium">
-                          {tx.memberName || 'System'}
-                        </TableCell>
-                        <TableCell>
-                          <Badge variant="outline" className="capitalize text-[10px]">
-                            {(tx.transactionType || '').replace(/([A-Z])/g, ' $1').trim()}
-                          </Badge>
-                        </TableCell>
-                        <TableCell className="text-sm italic text-muted-foreground max-w-[200px] truncate">
-                          {tx.comment}
-                        </TableCell>
-                        <TableCell className={cn(
-                          "text-right font-bold",
-                          tx.balanceImpact === 'Debit' ? 'text-destructive' : 'text-primary'
-                        )}>
-                          ₹{(tx.amount || 0).toLocaleString()}
-                        </TableCell>
-                      </TableRow>
-                    ))}
-                    {filteredTransactions.length === 0 && (
-                      <TableRow>
-                        <TableCell colSpan={5} className="h-24 text-center text-muted-foreground">
-                          No transactions found for this filter.
-                        </TableCell>
-                      </TableRow>
-                    )}
-                  </TableBody>
-                </Table>
-              )}
             </CardContent>
           </Card>
         </div>
