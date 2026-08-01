@@ -17,7 +17,8 @@ import {
   Scale,
   CircleCheck,
   CircleX,
-  User
+  User,
+  ArrowRight
 } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { 
@@ -27,8 +28,20 @@ import {
   SelectTrigger, 
   SelectValue 
 } from "@/components/ui/select";
+import { 
+  Table, 
+  TableBody, 
+  TableCell, 
+  TableHead, 
+  TableHeader, 
+  TableRow 
+} from "@/components/ui/table";
+import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import Link from "next/link";
 import { useFirestore, useCollection, useMemoFirebase, useUser } from "@/firebase";
 import { collection } from "firebase/firestore";
+import { cn } from "@/lib/utils";
 
 const months = [
   { value: "0", label: "January" },
@@ -196,6 +209,22 @@ export default function Dashboard() {
     return s;
   }, [filteredTransactions, allTransactions, dateFilterType, viewMonth, viewYear]);
 
+  // Sorting for tables
+  const sortedMembers = useMemo(() => {
+    if (!members) return [];
+    return [...members]
+      .sort((a, b) => (a.name || "").localeCompare(b.name || ""))
+      .slice(0, 5);
+  }, [members]);
+
+  const sortedLoans = useMemo(() => {
+    if (!loans) return [];
+    return [...loans]
+      .filter(l => l.status === 'Active')
+      .sort((a, b) => new Date(b.loanDate).getTime() - new Date(a.loanDate).getTime())
+      .slice(0, 5);
+  }, [loans]);
+
   if (isUserLoading || txLoading) {
     return (
       <div className="min-h-screen flex items-center justify-center">
@@ -315,12 +344,8 @@ export default function Dashboard() {
                       <CircleX className="h-4 w-4 text-red-500" />
                       <span className="text-xl font-bold">{globalStats.memberInactive}</span>
                     </div>
-                    <div className="flex items-center gap-1.5">
-                      <User className="h-4 w-4 text-slate-400" />
-                      <span className="text-xl font-bold">0</span>
-                    </div>
                   </div>
-                  <p className="text-xs text-muted-foreground mt-2">Active / Inactive / Closed</p>
+                  <p className="text-xs text-muted-foreground mt-2">Active / Inactive</p>
                 </div>
                 <div className="p-3 rounded-xl bg-slate-50 text-[#3f51b5]">
                   <UserCheck className="h-6 w-6" />
@@ -368,7 +393,6 @@ export default function Dashboard() {
                 <span className="font-bold">₹{overviewStats.principalRecovered.toLocaleString()}</span>
               </div>
               
-              {/* Closing Balance Section - Strictly Cumulative */}
               <div className="flex justify-between items-center text-sm pt-4 border-t border-dashed mt-2 bg-blue-50/50 p-2 rounded-md">
                 <span className="text-primary font-bold">Closing Balance (Carry-Forward)</span>
                 <div className="text-right">
@@ -376,6 +400,130 @@ export default function Dashboard() {
                   <p className="text-[10px] text-muted-foreground uppercase font-bold">End of Period Total</p>
                 </div>
               </div>
+            </CardContent>
+          </Card>
+
+          {/* Directory Summary - Members */}
+          <Card className="border-none shadow-sm bg-white overflow-hidden">
+            <CardHeader className="flex flex-row items-center justify-between pb-2">
+              <div>
+                <CardTitle className="text-lg font-bold text-[#1a1f36]">Member Directory</CardTitle>
+                <p className="text-xs text-muted-foreground mt-1">Recent members list</p>
+              </div>
+              <Button variant="ghost" size="sm" asChild className="text-[#3f51b5] hover:text-[#3f51b5] hover:bg-indigo-50">
+                <Link href="/members" className="flex items-center gap-1">
+                  View All <ArrowRight className="h-3 w-3" />
+                </Link>
+              </Button>
+            </CardHeader>
+            <CardContent className="p-0">
+              <Table>
+                <TableHeader>
+                  <TableRow className="bg-muted/30 text-[10px] uppercase tracking-wider font-bold">
+                    <TableHead className="pl-6">Member ID</TableHead>
+                    <TableHead>Name</TableHead>
+                    <TableHead>Status</TableHead>
+                    <TableHead className="text-right pr-6">Credit</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {sortedMembers.map((member) => (
+                    <TableRow key={member.id} className="hover:bg-muted/10 transition-colors border-none">
+                      <TableCell className="pl-6 font-mono text-[10px] font-bold text-primary">
+                        {member.id}
+                      </TableCell>
+                      <TableCell className="font-medium text-xs">
+                        {member.name}
+                      </TableCell>
+                      <TableCell>
+                        <Badge variant={member.status === 'Active' ? 'default' : 'secondary'} className={cn(
+                          "text-[9px] px-1.5 py-0",
+                          member.status === 'Active' ? 'bg-green-100 text-green-700 hover:bg-green-100' : ''
+                        )}>
+                          {member.status}
+                        </Badge>
+                      </TableCell>
+                      <TableCell className="text-right pr-6 font-bold text-xs">
+                        {member.creditRating || 10}/10
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                  {sortedMembers.length === 0 && (
+                    <TableRow>
+                      <TableCell colSpan={4} className="h-24 text-center text-xs text-muted-foreground">
+                        No members found.
+                      </TableCell>
+                    </TableRow>
+                  )}
+                </TableBody>
+              </Table>
+            </CardContent>
+          </Card>
+        </div>
+
+        {/* Loans Summary Section */}
+        <div className="grid gap-6">
+          <Card className="border-none shadow-sm bg-white overflow-hidden">
+            <CardHeader className="flex flex-row items-center justify-between pb-2">
+              <div>
+                <CardTitle className="text-lg font-bold text-[#1a1f36]">Active Loans</CardTitle>
+                <p className="text-xs text-muted-foreground mt-1">Recent active disbursements</p>
+              </div>
+              <Button variant="ghost" size="sm" asChild className="text-[#3f51b5] hover:text-[#3f51b5] hover:bg-indigo-50">
+                <Link href="/loans" className="flex items-center gap-1">
+                  View All <ArrowRight className="h-3 w-3" />
+                </Link>
+              </Button>
+            </CardHeader>
+            <CardContent className="p-0">
+              <Table>
+                <TableHeader>
+                  <TableRow className="bg-muted/30 text-[10px] uppercase tracking-wider font-bold">
+                    <TableHead className="pl-6">Loan ID</TableHead>
+                    <TableHead>Recipient</TableHead>
+                    <TableHead>Principal</TableHead>
+                    <TableHead>Interest</TableHead>
+                    <TableHead>Status</TableHead>
+                    <TableHead className="text-right pr-6">Outstanding</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {sortedLoans.map((loan) => {
+                    const member = members?.find(m => m.id === loan.memberId);
+                    return (
+                      <TableRow key={loan.id} className="hover:bg-muted/10 transition-colors border-none">
+                        <TableCell className="pl-6 font-mono text-[10px] font-bold text-primary">
+                          {loan.id}
+                        </TableCell>
+                        <TableCell className="font-medium text-xs">
+                          {loan.isOutsiderLoan ? loan.outsiderName : (member?.name || 'Unknown')}
+                        </TableCell>
+                        <TableCell className="text-xs">
+                          ₹{(loan.loanAmount || 0).toLocaleString()}
+                        </TableCell>
+                        <TableCell className="text-xs">
+                          {((loan.interestRate || 0) * 100).toFixed(1)}%
+                        </TableCell>
+                        <TableCell>
+                          <Badge className="text-[9px] px-1.5 py-0 bg-green-100 text-green-700 hover:bg-green-100">
+                            Active
+                          </Badge>
+                        </TableCell>
+                        <TableCell className="text-right pr-6 font-bold text-xs text-destructive">
+                          ₹{((loan.outstandingPrincipal || 0) + (loan.outstandingInterest || 0)).toLocaleString()}
+                        </TableCell>
+                      </TableRow>
+                    );
+                  })}
+                  {sortedLoans.length === 0 && (
+                    <TableRow>
+                      <TableCell colSpan={6} className="h-24 text-center text-xs text-muted-foreground">
+                        No active loans found.
+                      </TableCell>
+                    </TableRow>
+                  )}
+                </TableBody>
+              </Table>
             </CardContent>
           </Card>
         </div>
