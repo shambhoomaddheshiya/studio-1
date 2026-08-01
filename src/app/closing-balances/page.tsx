@@ -60,7 +60,8 @@ export default function ClosingBalancesPage() {
         return tx.balanceImpact === 'Credit' ? acc + (tx.amount || 0) : acc - (tx.amount || 0);
       }, 0);
 
-      // PERIOD-SPECIFIC: Calculate inflow and outflow for this month ONLY
+      // PERIOD-SPECIFIC: Sum the actual total values for this month as stored in the data
+      // These are not derived from the closing balance and represent raw monthly totals.
       const monthStats = allTransactions.reduce((acc, tx) => {
         if (!tx.transactionDate) return acc;
         const txDate = new Date(tx.transactionDate);
