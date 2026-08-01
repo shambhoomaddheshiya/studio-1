@@ -250,45 +250,45 @@ export default function Dashboard() {
         <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
           <StatCard 
             title="Remaining Fund" 
-            value={`₹${stats.remaining.toLocaleString()}`}
+            value={`₹${Math.abs(stats.remaining).toLocaleString()}`}
             icon={Coins}
             iconClassName="bg-blue-100 text-primary"
             description="Net balance of filtered items"
           />
           <StatCard 
             title="Total Deposits" 
-            value={`₹${stats.deposits.toLocaleString()}`}
+            value={`₹${Math.abs(stats.deposits).toLocaleString()}`}
             icon={Users}
             iconClassName="bg-cyan-100 text-cyan-600"
           />
           <StatCard 
             title="Loans Issued" 
-            value={`₹${stats.loans.toLocaleString()}`}
+            value={`₹${Math.abs(stats.loans).toLocaleString()}`}
             icon={HandCoins}
             iconClassName="bg-indigo-100 text-indigo-600"
           />
           <StatCard 
             title="Interest Received" 
-            value={`₹${stats.interest.toLocaleString()}`}
+            value={`₹${Math.abs(stats.interest).toLocaleString()}`}
             icon={TrendingUp}
             iconClassName="bg-green-100 text-green-600"
           />
           <StatCard 
             title="Total Repayments" 
-            value={`₹${stats.repayments.toLocaleString()}`}
+            value={`₹${Math.abs(stats.repayments).toLocaleString()}`}
             icon={ArrowRightLeft}
             iconClassName="bg-emerald-100 text-emerald-600"
             description="Principal & Fine"
           />
           <StatCard 
             title="Total Expenses" 
-            value={`₹${stats.expenses.toLocaleString()}`}
+            value={`₹${Math.abs(stats.expenses).toLocaleString()}`}
             icon={Receipt}
             iconClassName="bg-rose-100 text-rose-600"
           />
           <StatCard 
             title="Loan Waived" 
-            value={`₹${stats.waived.toLocaleString()}`}
+            value={`₹${Math.abs(stats.waived).toLocaleString()}`}
             icon={HeartHandshake}
             iconClassName="bg-amber-100 text-amber-600"
           />
@@ -344,7 +344,7 @@ export default function Dashboard() {
                           "text-right font-bold",
                           tx.balanceImpact === 'Debit' ? 'text-destructive' : 'text-primary'
                         )}>
-                          {tx.balanceImpact === 'Debit' ? '-' : '+'}₹{(tx.amount || 0).toLocaleString()}
+                          ₹{(tx.amount || 0).toLocaleString()}
                         </TableCell>
                       </TableRow>
                     ))}

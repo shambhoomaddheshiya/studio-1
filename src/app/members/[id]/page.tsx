@@ -1,3 +1,4 @@
+
 "use client"
 
 import React, { useState, useEffect } from "react";
@@ -264,31 +265,31 @@ export default function MemberDetails() {
                   <span className="text-muted-foreground flex items-center gap-2">
                     <Wallet className="h-4 w-4" /> Total Deposit
                   </span>
-                  <span className="font-bold">₹{stats.totalDeposit.toLocaleString()}</span>
+                  <span className="font-bold">₹{Math.abs(stats.totalDeposit).toLocaleString()}</span>
                 </div>
                 <div className="flex justify-between items-center text-sm">
                   <span className="text-muted-foreground flex items-center gap-2">
                     <HandCoins className="h-4 w-4" /> Total Loan Taken
                   </span>
-                  <span className="font-bold">₹{stats.totalLoanTaken.toLocaleString()}</span>
+                  <span className="font-bold">₹{Math.abs(stats.totalLoanTaken).toLocaleString()}</span>
                 </div>
                 <div className="flex justify-between items-center text-sm">
                   <span className="text-muted-foreground flex items-center gap-2">
                     <Info className="h-4 w-4" /> Outstanding
                   </span>
-                  <span className="font-bold text-destructive">₹{stats.currentOutstandingLoan.toLocaleString()}</span>
+                  <span className="font-bold text-destructive">₹{Math.abs(stats.currentOutstandingLoan).toLocaleString()}</span>
                 </div>
                 <div className="flex justify-between items-center text-sm">
                   <span className="text-muted-foreground flex items-center gap-2">
                     <TrendingUp className="h-4 w-4 text-green-600" /> Interest Earned
                   </span>
-                  <span className="font-bold text-green-600">₹{interestShare.toLocaleString()}</span>
+                  <span className="font-bold text-green-600">₹{Math.abs(interestShare).toLocaleString()}</span>
                 </div>
                 <div className="flex justify-between items-center text-sm pt-4 border-t border-dashed">
                   <span className="font-bold text-primary flex items-center gap-2">
                     <Sigma className="h-4 w-4" /> Grand Total
                   </span>
-                  <span className="font-extrabold text-primary text-base">₹{grandTotal.toLocaleString()}</span>
+                  <span className="font-extrabold text-primary text-base">₹{Math.abs(grandTotal).toLocaleString()}</span>
                 </div>
               </CardContent>
             </Card>
@@ -372,7 +373,7 @@ export default function MemberDetails() {
                             "text-right font-bold",
                             tx.balanceImpact === 'Debit' ? 'text-destructive' : 'text-primary'
                           )}>
-                            {tx.balanceImpact === 'Debit' ? '-' : '+'}₹{(tx.amount || 0).toLocaleString()}
+                            ₹{(tx.amount || 0).toLocaleString()}
                           </TableCell>
                         </TableRow>
                       ))}
