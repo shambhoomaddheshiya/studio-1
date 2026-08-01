@@ -46,14 +46,25 @@ export default function NewTransactionPage() {
   const membersRef = useMemoFirebase(() => collection(db, 'members'), [db]);
   const { data: members, isLoading: membersLoading } = useCollection(membersRef);
 
-  // Alphabetical sorting for members
-  const sortedMembers = React.useMemo(() => {
-    if (!members) return [];
-    return [...members].sort((a, b) => (a.name || "").localeCompare(b.name || ""));
-  }, [members]);
-
   const loansRef = useMemoFirebase(() => collection(db, 'loans'), [db]);
   const { data: allLoans, isLoading: loansLoading } = useCollection(loansRef);
+
+  // Alphabetical sorting and calculation of balances for the dropdown
+  const sortedMembersWithBalance = React.useMemo(() => {
+    if (!members) return [];
+    
+    const sorted = [...members].sort((a, b) => (a.name || "").localeCompare(b.name || ""));
+    
+    if (!allLoans) return sorted.map(m => ({ ...m, loanBalance: 0 }));
+
+    return sorted.map(member => {
+      const balance = allLoans
+        .filter(loan => loan.memberId === member.id && loan.status !== 'Closed')
+        .reduce((acc, loan) => acc + (loan.outstandingPrincipal || 0) + (loan.outstandingInterest || 0), 0);
+      
+      return { ...member, loanBalance: balance };
+    });
+  }, [members, allLoans]);
 
   const memberLoans = React.useMemo(() => {
     if (!allLoans || !memberId) return [];
@@ -78,7 +89,7 @@ export default function NewTransactionPage() {
       const formData = new FormData(e.currentTarget);
       const description = (formData.get('description') as string) || "";
       
-      const selectedMember = sortedMembers.find(m => m.id === memberId);
+      const selectedMember = sortedMembersWithBalance.find(m => m.id === memberId);
       const memberName = selectedMember?.name || "Unknown Member";
       const timestamp = new Date().toISOString();
       const txDate = date.toISOString();
@@ -271,12 +282,12 @@ export default function NewTransactionPage() {
                     <Label className="text-slate-700 font-medium">Member</Label>
                     <Select value={memberId} onValueChange={handleMemberChange} required disabled={isSubmitting}>
                       <SelectTrigger className="bg-slate-50 border-slate-200">
-                        <SelectValue placeholder={membersLoading ? "Loading members..." : "Select a member"} />
+                        <SelectValue placeholder={membersLoading || loansLoading ? "Loading..." : "Select a member"} />
                       </SelectTrigger>
                       <SelectContent>
-                        {sortedMembers.map(m => (
+                        {sortedMembersWithBalance.map(m => (
                           <SelectItem key={m.id} value={m.id}>
-                            {m.name} ({m.id})
+                            {m.name} (Loan: ₹{m.loanBalance.toLocaleString()})
                           </SelectItem>
                         ))}
                       </SelectContent>
