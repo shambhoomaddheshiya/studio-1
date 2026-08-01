@@ -65,7 +65,7 @@ const months = [
 ];
 
 const typeFilters = [
-  { value: "all", label: "All Types" },
+  { value: "all", label: "All" },
   { value: "deposits", label: "Deposits" },
   { value: "loans", label: "Loans" },
   { value: "interest", label: "Interest" },
@@ -85,7 +85,6 @@ export default function TransactionsPage() {
   const { user, isUserLoading } = useUser();
   const { toast } = useToast();
   
-  // States
   const [searchTerm, setSearchTerm] = useState("");
   const [dateFilterType, setDateFilterType] = useState<string>("all");
   const [typeFilter, setTypeFilter] = useState<string>("all");

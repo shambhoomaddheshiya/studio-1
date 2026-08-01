@@ -26,8 +26,18 @@ import {
   SelectTrigger, 
   SelectValue 
 } from "@/components/ui/select";
+import { 
+  Table, 
+  TableBody, 
+  TableCell, 
+  TableHead, 
+  TableHeader, 
+  TableRow 
+} from "@/components/ui/table";
+import { Badge } from "@/components/ui/badge";
 import { useFirestore, useCollection, useMemoFirebase, useUser } from "@/firebase";
 import { collection } from "firebase/firestore";
+import { cn } from "@/lib/utils";
 
 const months = [
   { value: "0", label: "January" },
@@ -45,7 +55,7 @@ const months = [
 ];
 
 const typeFilters = [
-  { value: "all", label: "All Types" },
+  { value: "all", label: "All" },
   { value: "deposits", label: "Deposits" },
   { value: "loans", label: "Loans" },
   { value: "interest", label: "Interest" },
@@ -82,7 +92,6 @@ export default function Dashboard() {
   const { data: allTransactions, isLoading: txLoading } = useCollection(allTxQuery);
   const { data: members } = useCollection(membersQuery);
 
-  // Available years for the filter
   const availableYears = useMemo(() => {
     const years = new Set<string>();
     const currentYear = new Date().getFullYear();
@@ -98,7 +107,6 @@ export default function Dashboard() {
     return Array.from(years).sort((a, b) => b.localeCompare(a));
   }, [allTransactions]);
 
-  // Unified Filtering Logic
   const filteredTransactions = useMemo(() => {
     if (!allTransactions) return [];
 
@@ -125,10 +133,13 @@ export default function Dashboard() {
       }
 
       return true;
+    }).sort((a, b) => {
+      const dateA = new Date(a.transactionDate || 0).getTime();
+      const dateB = new Date(b.transactionDate || 0).getTime();
+      return dateB - dateA;
     });
   }, [allTransactions, dateFilterType, typeFilter, viewMonth, viewYear]);
 
-  // Filtered Stat Calculations
   const stats = useMemo(() => {
     const s = {
       deposits: 0,
@@ -152,7 +163,6 @@ export default function Dashboard() {
       if (t === 'GeneralExpense') s.expenses += amt;
       if (t === 'LoanWaived') s.waived += amt;
 
-      // Net impact on fund within this filtered set
       if (impact === 'Credit') s.remaining += amt;
       else s.remaining -= amt;
     });
@@ -179,7 +189,6 @@ export default function Dashboard() {
             <p className="text-muted-foreground">Manage and track group funds with live transaction analytics.</p>
           </div>
 
-          {/* Global Filter Bar */}
           <div className="flex flex-wrap items-center gap-3 p-4 bg-white rounded-xl shadow-sm border border-slate-100">
             <div className="flex items-center gap-2 mr-4">
               <Filter className="h-4 w-4 text-primary" />
@@ -238,7 +247,6 @@ export default function Dashboard() {
           </div>
         </header>
 
-        {/* Dashboard Stat Cards */}
         <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
           <StatCard 
             title="Remaining Fund" 
@@ -295,48 +303,61 @@ export default function Dashboard() {
 
         <div className="grid gap-6">
           <Card className="border-none shadow-sm">
-            <CardHeader className="flex flex-row items-center justify-between pb-2">
+            <CardHeader className="flex flex-row items-center justify-between pb-4 border-b">
               <div className="flex items-center gap-2">
-                <CalendarCheck className="h-5 w-5 text-primary" />
-                <CardTitle className="text-lg">Filter Summary Detail</CardTitle>
+                <History className="h-5 w-5 text-primary" />
+                <CardTitle className="text-lg">Filtered Transaction History</CardTitle>
               </div>
             </CardHeader>
-            <CardContent>
-              <div className="space-y-4">
-                <div className="pb-4 border-b">
-                  <p className="text-sm font-medium text-muted-foreground">
-                    Active Data: <span className="text-primary font-bold">
-                      {dateFilterType === 'all' ? 'All Time' : dateFilterType === 'yearly' ? `Year ${viewYear}` : `${months.find(m => m.value === viewMonth)?.label} ${viewYear}`}
-                    </span>
-                    {typeFilter !== 'all' && (
-                      <> | Category: <span className="text-primary font-bold capitalize">{typeFilter}</span></>
+            <CardContent className="p-0">
+              {txLoading ? (
+                <div className="flex justify-center p-12"><Loader2 className="animate-spin text-muted-foreground" /></div>
+              ) : (
+                <Table>
+                  <TableHeader>
+                    <TableRow className="bg-muted/30">
+                      <TableHead>Date</TableHead>
+                      <TableHead>Member</TableHead>
+                      <TableHead>Type</TableHead>
+                      <TableHead>Comment</TableHead>
+                      <TableHead className="text-right">Amount</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {filteredTransactions.map((tx) => (
+                      <TableRow key={tx.id} className="hover:bg-muted/20">
+                        <TableCell className="text-sm">
+                          {tx.transactionDate ? new Date(tx.transactionDate).toLocaleDateString() : '-'}
+                        </TableCell>
+                        <TableCell className="font-medium">
+                          {tx.memberName || 'System'}
+                        </TableCell>
+                        <TableCell>
+                          <Badge variant="outline" className="capitalize text-[10px]">
+                            {(tx.transactionType || '').replace(/([A-Z])/g, ' $1').trim()}
+                          </Badge>
+                        </TableCell>
+                        <TableCell className="text-sm italic text-muted-foreground max-w-[200px] truncate">
+                          {tx.comment}
+                        </TableCell>
+                        <TableCell className={cn(
+                          "text-right font-bold",
+                          tx.balanceImpact === 'Debit' ? 'text-destructive' : 'text-primary'
+                        )}>
+                          {tx.balanceImpact === 'Debit' ? '-' : '+'}₹{(tx.amount || 0).toLocaleString()}
+                        </TableCell>
+                      </TableRow>
+                    ))}
+                    {filteredTransactions.length === 0 && (
+                      <TableRow>
+                        <TableCell colSpan={5} className="h-24 text-center text-muted-foreground">
+                          No transactions found for this filter.
+                        </TableCell>
+                      </TableRow>
                     )}
-                  </p>
-                </div>
-                
-                {txLoading ? (
-                  <div className="flex justify-center p-8"><Loader2 className="animate-spin text-muted-foreground" /></div>
-                ) : (
-                  <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 pt-2">
-                    <div className="p-4 rounded-xl bg-slate-50 border border-slate-100">
-                      <p className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider mb-1">Inflow (Credits)</p>
-                      <p className="text-2xl font-bold text-green-600">₹{(stats.deposits + stats.interest + stats.repayments).toLocaleString()}</p>
-                    </div>
-                    <div className="p-4 rounded-xl bg-slate-50 border border-slate-100">
-                      <p className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider mb-1">Outflow (Debits)</p>
-                      <p className="text-2xl font-bold text-destructive">₹{(stats.loans + stats.expenses + stats.waived).toLocaleString()}</p>
-                    </div>
-                    <div className="p-4 rounded-xl bg-slate-50 border border-slate-100">
-                      <p className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider mb-1">Net Balance</p>
-                      <p className="text-2xl font-bold text-primary">₹{stats.remaining.toLocaleString()}</p>
-                    </div>
-                    <div className="p-4 rounded-xl bg-primary/5 border border-primary/10">
-                      <p className="text-[10px] font-bold text-primary uppercase tracking-wider mb-1">Active Members</p>
-                      <p className="text-2xl font-bold text-primary">{members?.length || 0}</p>
-                    </div>
-                  </div>
-                )}
-              </div>
+                  </TableBody>
+                </Table>
+              )}
             </CardContent>
           </Card>
         </div>
