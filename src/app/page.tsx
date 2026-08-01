@@ -120,6 +120,7 @@ export default function Dashboard() {
     return Array.from(years).sort((a, b) => b.localeCompare(a));
   }, [allTransactions]);
 
+  // Filters apply ONLY to the Monthly Overview section
   const filteredTransactions = useMemo(() => {
     if (!allTransactions) return [];
 
@@ -146,45 +147,35 @@ export default function Dashboard() {
       }
 
       return true;
-    }).sort((a, b) => {
-      const dateA = new Date(a.transactionDate || 0).getTime();
-      const dateB = new Date(b.transactionDate || 0).getTime();
-      return dateB - dateA;
     });
   }, [allTransactions, dateFilterType, typeFilter, viewMonth, viewYear]);
 
-  const stats = useMemo(() => {
+  // Global stats for the top summary cards
+  const globalStats = useMemo(() => {
     const s = {
       deposits: 0,
       loans: 0,
       interest: 0,
-      repayments: 0,
-      principalRecovered: 0,
-      expenses: 0,
-      waived: 0,
       remaining: 0,
       outstanding: 0,
       memberActive: 0,
       memberInactive: 0,
-      memberClosed: 0
     };
 
-    filteredTransactions.forEach(tx => {
-      const amt = tx.amount || 0;
-      const t = tx.transactionType;
-      const impact = tx.balanceImpact;
+    if (allTransactions) {
+      allTransactions.forEach(tx => {
+        const amt = tx.amount || 0;
+        const t = tx.transactionType;
+        const impact = tx.balanceImpact;
 
-      if (t === 'Deposit') s.deposits += amt;
-      if (t === 'LoanDisbursement') s.loans += amt;
-      if (t === 'InterestPayment') s.interest += amt;
-      if (['PrincipalRepayment', 'FinePayment'].includes(t)) s.repayments += amt;
-      if (t === 'PrincipalRepayment') s.principalRecovered += amt;
-      if (t === 'GeneralExpense') s.expenses += amt;
-      if (t === 'LoanWaived') s.waived += amt;
+        if (t === 'Deposit') s.deposits += amt;
+        if (t === 'LoanDisbursement') s.loans += amt;
+        if (t === 'InterestPayment') s.interest += amt;
 
-      if (impact === 'Credit') s.remaining += amt;
-      else s.remaining -= amt;
-    });
+        if (impact === 'Credit') s.remaining += amt;
+        else s.remaining -= amt;
+      });
+    }
 
     if (loans) {
       s.outstanding = loans.reduce((acc, loan) => {
@@ -201,7 +192,29 @@ export default function Dashboard() {
     }
 
     return s;
-  }, [filteredTransactions, loans, members]);
+  }, [allTransactions, loans, members]);
+
+  // Overview stats based on the UI filters
+  const overviewStats = useMemo(() => {
+    const s = {
+      deposits: 0,
+      loans: 0,
+      interest: 0,
+      principalRecovered: 0,
+    };
+
+    filteredTransactions.forEach(tx => {
+      const amt = tx.amount || 0;
+      const t = tx.transactionType;
+
+      if (t === 'Deposit') s.deposits += amt;
+      if (t === 'LoanDisbursement') s.loans += amt;
+      if (t === 'InterestPayment') s.interest += amt;
+      if (t === 'PrincipalRepayment') s.principalRecovered += amt;
+    });
+
+    return s;
+  }, [filteredTransactions]);
 
   if (isUserLoading) {
     return (
@@ -279,39 +292,39 @@ export default function Dashboard() {
           </div>
         </header>
 
-        {/* Top Summary Row */}
+        {/* Top Summary Row - Displays Global Data */}
         <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-4">
           <StatCard 
             title="Total Remaining Fund" 
-            value={`₹ ${Math.abs(stats.remaining).toLocaleString()}`}
+            value={`₹ ${Math.abs(globalStats.remaining).toLocaleString()}`}
             icon={Wallet}
             iconClassName="bg-blue-50 text-[#3f51b5]"
             description="Cash available in group"
           />
           <StatCard 
             title="Total Deposits" 
-            value={`₹ ${Math.abs(stats.deposits).toLocaleString()}`}
+            value={`₹ ${Math.abs(globalStats.deposits).toLocaleString()}`}
             icon={PiggyBank}
             iconClassName="bg-indigo-50 text-[#3f51b5]"
             description="From active & closed members"
           />
           <StatCard 
             title="Total Loan Disbursed" 
-            value={`₹ ${Math.abs(stats.loans).toLocaleString()}`}
+            value={`₹ ${Math.abs(globalStats.loans).toLocaleString()}`}
             icon={Landmark}
             iconClassName="bg-blue-50 text-[#3f51b5]"
             description="To active & closed members"
           />
           <StatCard 
             title="Total Interest Earned" 
-            value={`₹ ${Math.abs(stats.interest).toLocaleString()}`}
+            value={`₹ ${Math.abs(globalStats.interest).toLocaleString()}`}
             icon={Scroll}
             iconClassName="bg-indigo-50 text-[#3f51b5]"
             description="From loan repayments"
           />
         </div>
 
-        {/* Second Summary Row */}
+        {/* Second Summary Row - Displays Global Data */}
         <div className="grid gap-6 md:grid-cols-3">
           <StatCard 
             title="Total Members" 
@@ -325,15 +338,15 @@ export default function Dashboard() {
             <CardContent className="p-6">
               <div className="flex items-center justify-between">
                 <div>
-                  <p className="text-xs font-medium text-muted-foreground uppercase tracking-wider">Member Status</p>
+                  <p className="text-xs font-medium text-muted-foreground uppercase tracking-wider">MEMBER STATUS</p>
                   <div className="flex items-center gap-4 mt-2">
                     <div className="flex items-center gap-1.5">
                       <CircleCheck className="h-4 w-4 text-green-500" />
-                      <span className="text-xl font-bold">{stats.memberActive}</span>
+                      <span className="text-xl font-bold">{globalStats.memberActive}</span>
                     </div>
                     <div className="flex items-center gap-1.5">
                       <CircleX className="h-4 w-4 text-red-500" />
-                      <span className="text-xl font-bold">{stats.memberInactive}</span>
+                      <span className="text-xl font-bold">{globalStats.memberInactive}</span>
                     </div>
                     <div className="flex items-center gap-1.5">
                       <User className="h-4 w-4 text-slate-400" />
@@ -351,39 +364,41 @@ export default function Dashboard() {
 
           <StatCard 
             title="Outstanding Loan" 
-            value={`₹ ${stats.outstanding.toLocaleString()}`}
+            value={`₹ ${globalStats.outstanding.toLocaleString()}`}
             icon={Scale}
             iconClassName="bg-slate-50 text-[#3f51b5]"
             description="Pending loan recovery"
           />
         </div>
 
-        {/* Monthly Overview Card */}
+        {/* Monthly Overview Card - Displays Filtered Data */}
         <div className="grid gap-6 lg:grid-cols-2">
           <Card className="border-none shadow-sm bg-white">
             <CardHeader className="flex flex-row items-center justify-between pb-2">
               <div>
                 <CardTitle className="text-lg font-bold text-[#1a1f36]">Monthly Overview</CardTitle>
-                <p className="text-xs text-muted-foreground mt-1">Summary for {months.find(m => m.value === viewMonth)?.label} {viewYear}</p>
+                <p className="text-xs text-muted-foreground mt-1">
+                  Summary for {dateFilterType === 'all' ? 'All Time' : `${months.find(m => m.value === viewMonth)?.label} ${viewYear}`}
+                </p>
               </div>
               <CalendarCheck className="h-5 w-5 text-[#3f51b5]" />
             </CardHeader>
             <CardContent className="space-y-4 pt-4">
               <div className="flex justify-between items-center text-sm border-b pb-2">
                 <span className="text-slate-600 font-medium">Total Amount Deposits</span>
-                <span className="font-bold">₹ {stats.deposits.toLocaleString()}</span>
+                <span className="font-bold">₹ {overviewStats.deposits.toLocaleString()}</span>
               </div>
               <div className="flex justify-between items-center text-sm border-b pb-2">
                 <span className="text-slate-600 font-medium">Amount Given as Loan</span>
-                <span className="font-bold">₹ {stats.loans.toLocaleString()}</span>
+                <span className="font-bold">₹ {overviewStats.loans.toLocaleString()}</span>
               </div>
               <div className="flex justify-between items-center text-sm border-b pb-2">
                 <span className="text-slate-600 font-medium">Interest Received</span>
-                <span className="font-bold">₹ {stats.interest.toLocaleString()}</span>
+                <span className="font-bold">₹ {overviewStats.interest.toLocaleString()}</span>
               </div>
               <div className="flex justify-between items-center text-sm border-b pb-2">
                 <span className="text-slate-600 font-medium">Principal Recovered</span>
-                <span className="font-bold">₹ {stats.principalRecovered.toLocaleString()}</span>
+                <span className="font-bold">₹ {overviewStats.principalRecovered.toLocaleString()}</span>
               </div>
             </CardContent>
           </Card>
