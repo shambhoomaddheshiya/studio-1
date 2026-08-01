@@ -51,36 +51,47 @@ export default function ClosingBalancesPage() {
     while (currentYear < targetYear || (currentYear === targetYear && currentMonth <= targetMonth)) {
       const monthEndDate = new Date(currentYear, currentMonth + 1, 0, 23, 59, 59);
       
-      // CUMULATIVE: Calculate closing balance for this month by summing ALL transactions up to this date
-      const closingBalance = allTransactions.reduce((acc, tx) => {
+      // CUMULATIVE: Calculate closing balance for this month by summing ALL INFLOWS up to this date
+      // As per instructions, this balance is NOT reduced by outflows/loans.
+      const cumulativeBalance = allTransactions.reduce((acc, tx) => {
         if (!tx.transactionDate) return acc;
         const txDate = new Date(tx.transactionDate);
         if (txDate > monthEndDate) return acc;
 
-        return tx.balanceImpact === 'Credit' ? acc + (tx.amount || 0) : acc - (tx.amount || 0);
+        // Only count Inflows (Deposits, Interest, Repayments, Fines)
+        const type = tx.transactionType;
+        if (['Deposit', 'InterestPayment', 'PrincipalRepayment', 'FinePayment'].includes(type)) {
+          return acc + (tx.amount || 0);
+        }
+        return acc;
       }, 0);
 
       // PERIOD-SPECIFIC: Sum the actual total values for this month as stored in the data
-      // These are not derived from the closing balance and represent raw monthly totals.
       const monthStats = allTransactions.reduce((acc, tx) => {
         if (!tx.transactionDate) return acc;
         const txDate = new Date(tx.transactionDate);
         if (txDate.getMonth() !== currentMonth || txDate.getFullYear() !== currentYear) return acc;
 
-        if (tx.balanceImpact === 'Credit') acc.inflow += (tx.amount || 0);
-        else acc.outflow += (tx.amount || 0);
+        const amt = tx.amount || 0;
+        const type = tx.transactionType;
+
+        if (type === 'Deposit') acc.deposits += amt;
+        else if (type === 'InterestPayment') acc.interest += amt;
+        else if (type === 'PrincipalRepayment' || type === 'FinePayment') acc.repayments += amt;
+        else if (type === 'LoanDisbursement') acc.loans += amt;
         
         return acc;
-      }, { inflow: 0, outflow: 0 });
+      }, { deposits: 0, interest: 0, repayments: 0, loans: 0 });
 
       balances.push({
         year: currentYear,
         month: currentMonth,
         monthName: new Date(currentYear, currentMonth).toLocaleString('default', { month: 'long' }),
-        closingBalance: closingBalance,
-        inflow: monthStats.inflow,
-        outflow: monthStats.outflow,
-        netChange: monthStats.inflow - monthStats.outflow
+        cumulativeBalance,
+        deposits: monthStats.deposits,
+        interest: monthStats.interest,
+        repayments: monthStats.repayments,
+        loans: monthStats.loans
       });
 
       // Advance to next month
@@ -91,7 +102,7 @@ export default function ClosingBalancesPage() {
       }
     }
 
-    return balances.reverse(); // Show newest months first for convenience
+    return balances.reverse(); // Show newest months first
   }, [allTransactions]);
 
   if (isUserLoading) {
@@ -114,7 +125,7 @@ export default function ClosingBalancesPage() {
             </div>
             <div>
               <h1 className="text-3xl font-bold tracking-tight text-primary font-headline">Monthly Closing Balance</h1>
-              <p className="text-muted-foreground text-sm">A cumulative running balance tracking the total group fund growth month by month.</p>
+              <p className="text-muted-foreground text-sm">Cumulative capital growth tracking total group inflows month by month.</p>
             </div>
           </div>
         </header>
@@ -128,48 +139,47 @@ export default function ClosingBalancesPage() {
             ) : (
               <Table>
                 <TableHeader>
-                  <TableRow className="bg-muted/50">
-                    <TableHead className="w-[200px]">Period</TableHead>
-                    <TableHead>Inflow (This Month)</TableHead>
-                    <TableHead>Outflow (This Month)</TableHead>
-                    <TableHead>Net Change</TableHead>
-                    <TableHead className="text-right">Cumulative Closing Balance</TableHead>
+                  <TableRow className="bg-muted/50 text-[11px] uppercase tracking-wider font-bold">
+                    <TableHead className="w-[180px]">Period</TableHead>
+                    <TableHead>Monthly Deposits</TableHead>
+                    <TableHead>Monthly Interest</TableHead>
+                    <TableHead>Monthly Repayments</TableHead>
+                    <TableHead>Monthly Loans</TableHead>
+                    <TableHead className="text-right">Cumulative Balance</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
                   {monthlyBalances.map((item) => (
                     <TableRow key={`${item.year}-${item.month}`} className="hover:bg-muted/30 transition-colors">
                       <TableCell className="font-medium">
-                        <div className="flex items-center gap-2">
+                        <div className="flex items-center gap-2 text-slate-700">
                           <Calendar className="h-4 w-4 text-muted-foreground" />
                           <span>{item.monthName} {item.year}</span>
                         </div>
                       </TableCell>
-                      <TableCell className="text-primary font-medium">
-                        ₹{Math.abs(item.inflow).toLocaleString()}
+                      <TableCell className="font-medium text-slate-900">
+                        ₹{Math.abs(item.deposits).toLocaleString()}
                       </TableCell>
-                      <TableCell className="text-destructive font-medium">
-                        ₹{Math.abs(item.outflow).toLocaleString()}
+                      <TableCell className="font-medium text-slate-900">
+                        ₹{Math.abs(item.interest).toLocaleString()}
                       </TableCell>
-                      <TableCell>
-                        <span className={cn(
-                          "px-2 py-0.5 rounded text-[10px] font-bold",
-                          item.netChange >= 0 ? "bg-green-100 text-green-700" : "bg-red-100 text-red-700"
-                        )}>
-                          ₹{Math.abs(item.netChange).toLocaleString()}
-                        </span>
+                      <TableCell className="font-medium text-slate-900">
+                        ₹{Math.abs(item.repayments).toLocaleString()}
+                      </TableCell>
+                      <TableCell className="font-medium text-destructive">
+                        ₹{Math.abs(item.loans).toLocaleString()}
                       </TableCell>
                       <TableCell className="text-right">
                         <div className="flex items-center justify-end gap-1.5 font-bold text-lg text-primary">
                           <IndianRupee className="h-4 w-4" />
-                          {Math.abs(item.closingBalance).toLocaleString()}
+                          {Math.abs(item.cumulativeBalance).toLocaleString()}
                         </div>
                       </TableCell>
                     </TableRow>
                   ))}
                   {monthlyBalances.length === 0 && !isLoading && (
                     <TableRow>
-                      <TableCell colSpan={5} className="h-32 text-center text-muted-foreground">
+                      <TableCell colSpan={6} className="h-32 text-center text-muted-foreground">
                         No transactions recorded yet to calculate monthly balances.
                       </TableCell>
                     </TableRow>
