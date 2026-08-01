@@ -1,3 +1,4 @@
+
 "use client"
 
 import React, { useState } from "react";
@@ -76,7 +77,6 @@ export default function MembersPage() {
     const joinedDate = new Date(member.createdAt);
     let missedCount = 0;
     
-    // Check 6 months prior to current month
     for (let i = 1; i <= 6; i++) {
       const checkDate = new Date(now.getFullYear(), now.getMonth() - i, 1);
       const m = checkDate.getMonth() + 1;
@@ -104,15 +104,21 @@ export default function MembersPage() {
     return 10;
   };
 
+  // Alphabetical sorting for member table
   const members = React.useMemo(() => {
     if (!rawMembers) return [];
-    if (!searchTerm) return rawMembers;
-    const lowerSearch = searchTerm.toLowerCase();
-    return rawMembers.filter(m => 
-      m.name?.toLowerCase().includes(lowerSearch) || 
-      m.id?.toLowerCase().includes(lowerSearch) ||
-      m.mobileNumber?.includes(lowerSearch)
-    );
+    
+    let filtered = rawMembers;
+    if (searchTerm) {
+      const lowerSearch = searchTerm.toLowerCase();
+      filtered = rawMembers.filter(m => 
+        m.name?.toLowerCase().includes(lowerSearch) || 
+        m.id?.toLowerCase().includes(lowerSearch) ||
+        m.mobileNumber?.includes(lowerSearch)
+      );
+    }
+    
+    return [...filtered].sort((a, b) => (a.name || "").localeCompare(b.name || ""));
   }, [rawMembers, searchTerm]);
 
   const handleDelete = () => {

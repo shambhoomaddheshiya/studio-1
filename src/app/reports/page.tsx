@@ -42,6 +42,12 @@ export default function ReportsPage() {
   const membersRef = useMemoFirebase(() => collection(db, 'members'), [db]);
   const { data: members } = useCollection(membersRef);
 
+  // Alphabetical sorting for member dropdown
+  const sortedMembers = React.useMemo(() => {
+    if (!members) return [];
+    return [...members].sort((a, b) => (a.name || "").localeCompare(b.name || ""));
+  }, [members]);
+
   const transactionsRef = useMemoFirebase(() => collection(db, 'transactions'), [db]);
   const { data: allTransactions } = useCollection(transactionsRef);
 
@@ -59,12 +65,9 @@ export default function ReportsPage() {
     
     setTimeout(() => {
       try {
-        // 1. Filter Data
         const filtered = allTransactions.filter(tx => {
-          // Scope Filter
           if (scope === "specific" && selectedMemberId && tx.memberId !== selectedMemberId) return false;
 
-          // Period Filter
           if (tx.transactionDate) {
             const txDate = new Date(tx.transactionDate);
             if (period === "monthly") {
@@ -77,7 +80,6 @@ export default function ReportsPage() {
             }
           }
 
-          // Type Filter
           if (type === "deposits" && tx.transactionType !== 'Deposit') return false;
           if (type === "loans" && tx.transactionType !== 'LoanDisbursement') return false;
           if (type === "repayments" && !['PrincipalRepayment', 'InterestPayment', 'FinePayment'].includes(tx.transactionType)) return false;
@@ -111,18 +113,15 @@ export default function ReportsPage() {
 
   const generatePDFReport = (data: any[]) => {
     const doc = new jsPDF();
-    const now = new Date();
     const monthName = period === 'monthly' ? new Date(0, parseInt(selectedMonth)).toLocaleString('default', { month: 'long' }) : '';
     const reportTitle = period === 'monthly' ? `Group Transactions Report: ${monthName} ${selectedYear}` : 'Group Transactions Report';
     const typeLabel = type === 'all' ? 'All' : type === 'deposits' ? 'Deposits' : type === 'loans' ? 'Loans' : 'Repayments';
 
-    // Header
     doc.setFontSize(18);
     doc.text(reportTitle, 14, 20);
     doc.setFontSize(11);
     doc.text(`Transaction Type: ${typeLabel}`, 14, 28);
 
-    // Calculate Summary
     const summary = data.reduce((acc, tx) => {
       const amt = tx.amount || 0;
       if (tx.transactionType === 'Deposit') acc.deposits += amt;
@@ -132,7 +131,6 @@ export default function ReportsPage() {
       return acc;
     }, { deposits: 0, loans: 0, principal: 0, interest: 0 });
 
-    // Summary Table
     autoTable(doc, {
       startY: 35,
       head: [['Summary Metric', 'Amount (INR)']],
@@ -148,7 +146,6 @@ export default function ReportsPage() {
       columnStyles: { 1: { halign: 'right' } }
     });
 
-    // Detailed Table
     const tableData = data.map(tx => {
       const amtStr = (tx.amount || 0).toLocaleString('en-IN');
       const principal = tx.transactionType === 'PrincipalRepayment' ? `Rs. ${amtStr}` : '-';
@@ -226,7 +223,6 @@ export default function ReportsPage() {
           </CardHeader>
           
           <CardContent className="space-y-8 pt-2">
-            {/* Export Scope */}
             <div className="space-y-3">
               <Label className="text-slate-600 font-medium text-sm">Export Scope</Label>
               <RadioGroup value={scope} onValueChange={setScope} className="flex flex-col space-y-2">
@@ -247,7 +243,7 @@ export default function ReportsPage() {
                       <SelectValue placeholder="Select a member" />
                     </SelectTrigger>
                     <SelectContent>
-                      {members?.map(m => (
+                      {sortedMembers.map(m => (
                         <SelectItem key={m.id} value={m.id}>{m.name}</SelectItem>
                       ))}
                     </SelectContent>
@@ -256,7 +252,6 @@ export default function ReportsPage() {
               )}
             </div>
 
-            {/* Report Period */}
             <div className="space-y-3">
               <Label className="text-slate-600 font-medium text-sm">Report Period</Label>
               <RadioGroup value={period} onValueChange={setPeriod} className="flex flex-col space-y-2">
@@ -327,7 +322,6 @@ export default function ReportsPage() {
               )}
             </div>
 
-            {/* Transaction Type */}
             <div className="space-y-3">
               <Label className="text-slate-600 font-medium text-sm">Transaction Type</Label>
               <RadioGroup value={type} onValueChange={setType} className="flex flex-row flex-wrap gap-x-6 gap-y-2">
@@ -350,7 +344,6 @@ export default function ReportsPage() {
               </RadioGroup>
             </div>
 
-            {/* File Format */}
             <div className="space-y-3">
               <Label className="text-slate-600 font-medium text-sm">File Format</Label>
               <RadioGroup value={format} onValueChange={setFormat} className="flex flex-row space-x-6">
@@ -365,7 +358,6 @@ export default function ReportsPage() {
               </RadioGroup>
             </div>
 
-            {/* Generate Button */}
             <div className="pt-4">
               <Button 
                 onClick={handleGenerateReport} 

@@ -46,6 +46,7 @@ export default function NewTransactionPage() {
   const membersRef = useMemoFirebase(() => collection(db, 'members'), [db]);
   const { data: members, isLoading: membersLoading } = useCollection(membersRef);
 
+  // Alphabetical sorting for members
   const sortedMembers = React.useMemo(() => {
     if (!members) return [];
     return [...members].sort((a, b) => (a.name || "").localeCompare(b.name || ""));
@@ -76,9 +77,8 @@ export default function NewTransactionPage() {
     try {
       const formData = new FormData(e.currentTarget);
       const description = (formData.get('description') as string) || "";
-      const loanIdForRepayment = formData.get('loan_id') as string;
       
-      const selectedMember = members?.find(m => m.id === memberId);
+      const selectedMember = sortedMembers.find(m => m.id === memberId);
       const memberName = selectedMember?.name || "Unknown Member";
       const timestamp = new Date().toISOString();
       const txDate = date.toISOString();
@@ -113,7 +113,7 @@ export default function NewTransactionPage() {
             setDocumentNonBlocking(repaymentRef, {
               id: repaymentRef.id,
               memberId,
-              loanId: loanIdForRepayment || 'unknown',
+              loanId: selectedLoanId || 'unknown',
               repaymentDate: txDate,
               principalPaid: config.type === 'PrincipalRepayment' ? amount : 0,
               interestPaid: config.type === 'InterestPayment' ? amount : 0,
@@ -185,15 +185,19 @@ export default function NewTransactionPage() {
         }
       });
 
-      if (loanIdForRepayment) {
-        const selectedLoan = allLoans?.find(l => l.id === loanIdForRepayment);
+      // AUTO-UPDATE LOAN BALANCE
+      if (selectedLoanId) {
+        const selectedLoan = allLoans?.find(l => l.id === selectedLoanId);
         if (selectedLoan) {
           const principalPaid = Number(formData.get('repayment_amount')) || 0;
           const interestPaid = Number(formData.get('interest_paid_amount')) || 0;
 
           if (principalPaid > 0 || interestPaid > 0) {
-            const newPrincipal = Math.max(0, (selectedLoan.outstandingPrincipal || 0) - principalPaid);
-            const newInterest = Math.max(0, (selectedLoan.outstandingInterest || 0) - interestPaid);
+            const currentPrincipal = selectedLoan.outstandingPrincipal ?? selectedLoan.loanAmount ?? 0;
+            const currentInterest = selectedLoan.outstandingInterest ?? 0;
+
+            const newPrincipal = Math.max(0, currentPrincipal - principalPaid);
+            const newInterest = Math.max(0, currentInterest - interestPaid);
             const newStatus = newPrincipal <= 0 ? 'Closed' : 'Active';
 
             const loanDocRef = doc(db, 'loans', selectedLoan.id);
@@ -325,7 +329,7 @@ export default function NewTransactionPage() {
                 </div>
 
                 <div className="space-y-4 bg-slate-100/50 p-4 rounded-lg border border-slate-200">
-                  <h3 className="font-semibold text-sm text-slate-900 mb-2 uppercase tracking-wider">Transaction Amounts</h3>
+                  <h3 className="font-semibold text-sm text-slate-900 mb-2 uppercase tracking-wider">TRANSACTION AMOUNTS</h3>
                   
                   <div className="space-y-4 overflow-y-auto max-h-[400px] pr-2">
                     <div className="space-y-1.5">
@@ -377,9 +381,8 @@ export default function NewTransactionPage() {
                     </div>
 
                     <div className="space-y-1.5">
-                      <Label htmlFor="loan_id" className="text-xs font-bold text-slate-600">Loan ID (For Repayment/Interest)</Label>
+                      <Label className="text-xs font-bold text-slate-600">Loan ID (For Repayment/Interest)</Label>
                       <Select 
-                        name="loan_id" 
                         value={selectedLoanId} 
                         onValueChange={setSelectedLoanId}
                         disabled={isSubmitting || !memberId || memberLoans.length === 0}
@@ -394,7 +397,7 @@ export default function NewTransactionPage() {
                         <SelectContent>
                           {memberLoans.map(loan => (
                             <SelectItem key={loan.id} value={loan.id}>
-                              Loan #{loan.id} (₹{loan.loanAmount.toLocaleString()})
+                              Loan #{loan.id} (₹{(loan.outstandingPrincipal ?? loan.loanAmount).toLocaleString()})
                             </SelectItem>
                           ))}
                         </SelectContent>
