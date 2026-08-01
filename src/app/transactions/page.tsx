@@ -303,23 +303,23 @@ export default function TransactionsPage() {
 
         <div className="grid gap-4 md:grid-cols-3 lg:grid-cols-6">
           <StatCard 
-            title="Filtered Deposits" 
+            title="Deposits" 
             value={`₹${Math.abs(stats.deposits).toLocaleString()}`}
           />
           <StatCard 
-            title="Filtered Repayments" 
+            title="Repayments" 
             value={`₹${Math.abs(stats.repayments).toLocaleString()}`}
           />
           <StatCard 
-            title="Filtered Loans" 
+            title="Loans" 
             value={`₹${Math.abs(stats.loans).toLocaleString()}`}
           />
           <StatCard 
-            title="Filtered Expenses" 
+            title="Expenses" 
             value={`₹${Math.abs(stats.expenses).toLocaleString()}`}
           />
           <StatCard 
-            title="Total Remaining Fund" 
+            title="Remaining Fund" 
             value={`₹${Math.abs(stats.remaining).toLocaleString()}`}
           />
           <StatCard 

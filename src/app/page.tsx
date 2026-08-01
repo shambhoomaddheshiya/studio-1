@@ -1,4 +1,3 @@
-
 "use client"
 
 import React, { useMemo, useState } from "react";
@@ -253,7 +252,7 @@ export default function Dashboard() {
             value={`₹${Math.abs(stats.remaining).toLocaleString()}`}
             icon={Coins}
             iconClassName="bg-blue-100 text-primary"
-            description="Net balance of filtered items"
+            description="Net balance of items"
           />
           <StatCard 
             title="Total Deposits" 
@@ -297,7 +296,7 @@ export default function Dashboard() {
             value={filteredTransactions.length}
             icon={History}
             iconClassName="bg-slate-100 text-slate-600"
-            description="Total filtered entries"
+            description="Total entries"
           />
         </div>
 
@@ -306,7 +305,7 @@ export default function Dashboard() {
             <CardHeader className="flex flex-row items-center justify-between pb-4 border-b">
               <div className="flex items-center gap-2">
                 <History className="h-5 w-5 text-primary" />
-                <CardTitle className="text-lg">Filtered Transaction History</CardTitle>
+                <CardTitle className="text-lg">Transaction History</CardTitle>
               </div>
             </CardHeader>
             <CardContent className="p-0">
