@@ -1,3 +1,4 @@
+
 "use client"
 
 import React, { useMemo, useState } from "react";
@@ -8,14 +9,21 @@ import {
   HandCoins, 
   TrendingUp, 
   History,
-  Coins,
+  Wallet,
   Loader2,
-  Banknote,
+  Landmark,
   CalendarCheck,
   Filter,
   ArrowRightLeft,
   Receipt,
-  HeartHandshake
+  HeartHandshake,
+  PiggyBank,
+  Scroll,
+  UserCheck,
+  Scale,
+  CircleCheck,
+  CircleX,
+  User
 } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { 
@@ -87,9 +95,15 @@ export default function Dashboard() {
     if (!db || !user) return null;
     return collection(db, 'members');
   }, [db, user]);
+
+  const loansQuery = useMemoFirebase(() => {
+    if (!db || !user) return null;
+    return collection(db, 'loans');
+  }, [db, user]);
   
   const { data: allTransactions, isLoading: txLoading } = useCollection(allTxQuery);
   const { data: members } = useCollection(membersQuery);
+  const { data: loans } = useCollection(loansQuery);
 
   const availableYears = useMemo(() => {
     const years = new Set<string>();
@@ -145,9 +159,14 @@ export default function Dashboard() {
       loans: 0,
       interest: 0,
       repayments: 0,
+      principalRecovered: 0,
       expenses: 0,
       waived: 0,
-      remaining: 0
+      remaining: 0,
+      outstanding: 0,
+      memberActive: 0,
+      memberInactive: 0,
+      memberClosed: 0
     };
 
     filteredTransactions.forEach(tx => {
@@ -159,6 +178,7 @@ export default function Dashboard() {
       if (t === 'LoanDisbursement') s.loans += amt;
       if (t === 'InterestPayment') s.interest += amt;
       if (['PrincipalRepayment', 'FinePayment'].includes(t)) s.repayments += amt;
+      if (t === 'PrincipalRepayment') s.principalRecovered += amt;
       if (t === 'GeneralExpense') s.expenses += amt;
       if (t === 'LoanWaived') s.waived += amt;
 
@@ -166,8 +186,23 @@ export default function Dashboard() {
       else s.remaining -= amt;
     });
 
+    if (loans) {
+      s.outstanding = loans.reduce((acc, loan) => {
+        if (loan.status === 'Active') {
+          return acc + (loan.outstandingPrincipal || 0) + (loan.outstandingInterest || 0);
+        }
+        return acc;
+      }, 0);
+    }
+
+    if (members) {
+      s.memberActive = members.filter(m => m.status === 'Active').length;
+      s.memberInactive = members.filter(m => m.status === 'Inactive').length;
+      // Note: 'Closed' is often treated as 'Inactive' in this schema, but we show what exists
+    }
+
     return s;
-  }, [filteredTransactions]);
+  }, [filteredTransactions, loans, members]);
 
   if (isUserLoading) {
     return (
@@ -178,24 +213,23 @@ export default function Dashboard() {
   }
 
   return (
-    <div className="min-h-screen flex flex-col">
+    <div className="min-h-screen flex flex-col bg-[#f0f2f9]">
       <Navbar />
       
       <main className="flex-1 p-4 sm:p-8 max-w-7xl mx-auto w-full space-y-8">
         <header className="flex flex-col gap-6">
           <div className="flex flex-col gap-2">
-            <h1 className="text-3xl font-bold tracking-tight text-primary font-headline">Financial Overview</h1>
-            <p className="text-muted-foreground">Manage and track group funds with live transaction analytics.</p>
+            <h1 className="text-3xl font-extrabold tracking-tight text-[#1a1f36] font-headline">Dashboard</h1>
           </div>
 
-          <div className="flex flex-wrap items-center gap-3 p-4 bg-white rounded-xl shadow-sm border border-slate-100">
+          <div className="flex flex-wrap items-center gap-3 p-4 bg-white rounded-xl shadow-sm border border-slate-200">
             <div className="flex items-center gap-2 mr-4">
               <Filter className="h-4 w-4 text-primary" />
-              <span className="text-xs font-bold uppercase tracking-wider text-slate-500">Dashboard Filters</span>
+              <span className="text-xs font-bold uppercase tracking-wider text-slate-500">Filter Controls</span>
             </div>
 
             <Select value={dateFilterType} onValueChange={setDateFilterType}>
-              <SelectTrigger className="w-[140px] h-9 text-sm">
+              <SelectTrigger className="w-[140px] h-9 text-sm bg-slate-50">
                 <SelectValue placeholder="Date Scope" />
               </SelectTrigger>
               <SelectContent>
@@ -207,7 +241,7 @@ export default function Dashboard() {
 
             {(dateFilterType === 'monthly' || dateFilterType === 'yearly') && (
               <Select value={viewYear} onValueChange={setViewYear}>
-                <SelectTrigger className="w-[100px] h-9 text-sm">
+                <SelectTrigger className="w-[100px] h-9 text-sm bg-slate-50">
                   <SelectValue placeholder="Year" />
                 </SelectTrigger>
                 <SelectContent>
@@ -220,7 +254,7 @@ export default function Dashboard() {
 
             {dateFilterType === 'monthly' && (
               <Select value={viewMonth} onValueChange={setViewMonth}>
-                <SelectTrigger className="w-[130px] h-9 text-sm">
+                <SelectTrigger className="w-[130px] h-9 text-sm bg-slate-50">
                   <SelectValue placeholder="Month" />
                 </SelectTrigger>
                 <SelectContent>
@@ -234,7 +268,7 @@ export default function Dashboard() {
             <div className="h-6 w-px bg-slate-200 mx-2" />
 
             <Select value={typeFilter} onValueChange={setTypeFilter}>
-              <SelectTrigger className="w-[160px] h-9 text-sm">
+              <SelectTrigger className="w-[160px] h-9 text-sm bg-slate-50">
                 <SelectValue placeholder="Transaction Type" />
               </SelectTrigger>
               <SelectContent>
@@ -246,66 +280,123 @@ export default function Dashboard() {
           </div>
         </header>
 
-        <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
+        {/* Top Summary Row */}
+        <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-4">
           <StatCard 
-            title="Remaining Fund" 
-            value={`₹${Math.abs(stats.remaining).toLocaleString()}`}
-            icon={Coins}
-            iconClassName="bg-blue-100 text-primary"
-            description="Net balance of items"
+            title="Total Remaining Fund" 
+            value={`₹ ${Math.abs(stats.remaining).toLocaleString()}`}
+            icon={Wallet}
+            iconClassName="bg-blue-50 text-[#3f51b5]"
+            description="Cash available in group"
           />
           <StatCard 
             title="Total Deposits" 
-            value={`₹${Math.abs(stats.deposits).toLocaleString()}`}
-            icon={Users}
-            iconClassName="bg-cyan-100 text-cyan-600"
+            value={`₹ ${Math.abs(stats.deposits).toLocaleString()}`}
+            icon={PiggyBank}
+            iconClassName="bg-indigo-50 text-[#3f51b5]"
+            description="From active & closed members"
           />
           <StatCard 
-            title="Loans Issued" 
-            value={`₹${Math.abs(stats.loans).toLocaleString()}`}
-            icon={HandCoins}
-            iconClassName="bg-indigo-100 text-indigo-600"
+            title="Total Loan Disbursed" 
+            value={`₹ ${Math.abs(stats.loans).toLocaleString()}`}
+            icon={Landmark}
+            iconClassName="bg-blue-50 text-[#3f51b5]"
+            description="To active & closed members"
           />
           <StatCard 
-            title="Interest Received" 
-            value={`₹${Math.abs(stats.interest).toLocaleString()}`}
-            icon={TrendingUp}
-            iconClassName="bg-green-100 text-green-600"
-          />
-          <StatCard 
-            title="Total Repayments" 
-            value={`₹${Math.abs(stats.repayments).toLocaleString()}`}
-            icon={ArrowRightLeft}
-            iconClassName="bg-emerald-100 text-emerald-600"
-            description="Principal & Fine"
-          />
-          <StatCard 
-            title="Total Expenses" 
-            value={`₹${Math.abs(stats.expenses).toLocaleString()}`}
-            icon={Receipt}
-            iconClassName="bg-rose-100 text-rose-600"
-          />
-          <StatCard 
-            title="Loan Waived" 
-            value={`₹${Math.abs(stats.waived).toLocaleString()}`}
-            icon={HeartHandshake}
-            iconClassName="bg-amber-100 text-amber-600"
-          />
-          <StatCard 
-            title="Records Count" 
-            value={filteredTransactions.length}
-            icon={History}
-            iconClassName="bg-slate-100 text-slate-600"
-            description="Total entries"
+            title="Total Interest Earned" 
+            value={`₹ ${Math.abs(stats.interest).toLocaleString()}`}
+            icon={Scroll}
+            iconClassName="bg-indigo-50 text-[#3f51b5]"
+            description="From loan repayments"
           />
         </div>
 
+        {/* Second Summary Row */}
+        <div className="grid gap-6 md:grid-cols-3">
+          <StatCard 
+            title="Total Members" 
+            value={members?.length || 0}
+            icon={Users}
+            iconClassName="bg-slate-50 text-[#3f51b5]"
+            description="Total members in group"
+          />
+          
+          <Card className="border-none shadow-sm bg-white overflow-hidden">
+            <CardContent className="p-6">
+              <div className="flex items-center justify-between">
+                <div>
+                  <p className="text-xs font-medium text-muted-foreground uppercase tracking-wider">Member Status</p>
+                  <div className="flex items-center gap-4 mt-2">
+                    <div className="flex items-center gap-1.5">
+                      <CircleCheck className="h-4 w-4 text-green-500" />
+                      <span className="text-xl font-bold">{stats.memberActive}</span>
+                    </div>
+                    <div className="flex items-center gap-1.5">
+                      <CircleX className="h-4 w-4 text-red-500" />
+                      <span className="text-xl font-bold">{stats.memberInactive}</span>
+                    </div>
+                    <div className="flex items-center gap-1.5">
+                      <User className="h-4 w-4 text-slate-400" />
+                      <span className="text-xl font-bold">0</span>
+                    </div>
+                  </div>
+                  <p className="text-xs text-muted-foreground mt-2">Active / Inactive / Closed</p>
+                </div>
+                <div className="p-3 rounded-xl bg-slate-50 text-[#3f51b5]">
+                  <UserCheck className="h-6 w-6" />
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+
+          <StatCard 
+            title="Outstanding Loan" 
+            value={`₹ ${stats.outstanding.toLocaleString()}`}
+            icon={Scale}
+            iconClassName="bg-slate-50 text-[#3f51b5]"
+            description="Pending loan recovery"
+          />
+        </div>
+
+        {/* Monthly Overview Card */}
+        <div className="grid gap-6 lg:grid-cols-2">
+          <Card className="border-none shadow-sm bg-white">
+            <CardHeader className="flex flex-row items-center justify-between pb-2">
+              <div>
+                <CardTitle className="text-lg font-bold text-[#1a1f36]">Monthly Overview</CardTitle>
+                <p className="text-xs text-muted-foreground mt-1">Summary for {months.find(m => m.value === viewMonth)?.label} {viewYear}</p>
+              </div>
+              <CalendarCheck className="h-5 w-5 text-[#3f51b5]" />
+            </CardHeader>
+            <CardContent className="space-y-4 pt-4">
+              <div className="flex justify-between items-center text-sm border-b pb-2">
+                <span className="text-slate-600 font-medium">Total Amount Deposits</span>
+                <span className="font-bold">₹ {stats.deposits.toLocaleString()}</span>
+              </div>
+              <div className="flex justify-between items-center text-sm border-b pb-2">
+                <span className="text-slate-600 font-medium">Amount Given as Loan</span>
+                <span className="font-bold">₹ {stats.loans.toLocaleString()}</span>
+              </div>
+              <div className="flex justify-between items-center text-sm border-b pb-2">
+                <span className="text-slate-600 font-medium">Interest Received</span>
+                <span className="font-bold">₹ {stats.interest.toLocaleString()}</span>
+              </div>
+              <div className="flex justify-between items-center text-sm border-b pb-2">
+                <span className="text-slate-600 font-medium">Principal Recovered</span>
+                <span className="font-bold">₹ {stats.principalRecovered.toLocaleString()}</span>
+              </div>
+            </CardContent>
+          </Card>
+        </div>
+
+        {/* Recent Transactions Table */}
         <div className="grid gap-6">
           <Card className="border-none shadow-sm">
             <CardHeader className="flex flex-row items-center justify-between pb-4 border-b">
               <div className="flex items-center gap-2">
                 <History className="h-5 w-5 text-primary" />
-                <CardTitle className="text-lg">Transaction History</CardTitle>
+                <CardTitle className="text-lg">Recent Ledger Entries</CardTitle>
               </div>
             </CardHeader>
             <CardContent className="p-0">
