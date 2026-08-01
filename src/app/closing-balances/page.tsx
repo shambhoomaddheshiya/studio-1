@@ -147,23 +147,23 @@ export default function ClosingBalancesPage() {
                         </div>
                       </TableCell>
                       <TableCell className="text-primary font-medium">
-                        ₹{item.inflow.toLocaleString()}
+                        ₹{Math.abs(item.inflow).toLocaleString()}
                       </TableCell>
                       <TableCell className="text-destructive font-medium">
-                        ₹{item.outflow.toLocaleString()}
+                        ₹{Math.abs(item.outflow).toLocaleString()}
                       </TableCell>
                       <TableCell>
                         <span className={cn(
                           "px-2 py-0.5 rounded text-[10px] font-bold",
                           item.netChange >= 0 ? "bg-green-100 text-green-700" : "bg-red-100 text-red-700"
                         )}>
-                          {item.netChange >= 0 ? '+' : ''}₹{item.netChange.toLocaleString()}
+                          ₹{Math.abs(item.netChange).toLocaleString()}
                         </span>
                       </TableCell>
                       <TableCell className="text-right">
                         <div className="flex items-center justify-end gap-1.5 font-bold text-lg text-primary">
                           <IndianRupee className="h-4 w-4" />
-                          {item.closingBalance.toLocaleString()}
+                          {Math.abs(item.closingBalance).toLocaleString()}
                         </div>
                       </TableCell>
                     </TableRow>
