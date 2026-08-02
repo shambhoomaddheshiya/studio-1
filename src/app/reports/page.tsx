@@ -1,3 +1,4 @@
+
 "use client"
 
 import React, { useState } from "react";
@@ -42,7 +43,6 @@ export default function ReportsPage() {
   const db = useFirestore();
   const [isGenerating, setIsGenerating] = useState(false);
   
-  // State for report configuration
   const [scope, setScope] = useState("all");
   const [selectedMemberId, setSelectedMemberId] = useState<string>("");
   const [period, setPeriod] = useState("all_time");
@@ -79,7 +79,6 @@ export default function ReportsPage() {
 
     setIsGenerating(true);
     
-    // Slight delay to allow UI state to update
     setTimeout(() => {
       try {
         let reportStart: Date;
@@ -95,16 +94,33 @@ export default function ReportsPage() {
           reportStart = startDate ? new Date(startDate) : new Date(0);
           reportEnd = endDate ? new Date(endDate) : new Date();
         } else {
-          // All Time
           reportStart = new Date(0);
           reportEnd = new Date();
         }
 
         const prevMonthEnd = new Date(reportStart.getTime() - 1);
-        const prevMonthLabel = months[prevMonthEnd.getMonth()].label;
-        const prevMonthYear = prevMonthEnd.getFullYear();
 
-        // Detailed transaction log filtering
+        const calcNetPosition = (date: Date) => {
+          const collections = allTransactions.reduce((acc, tx) => {
+            if (!tx.transactionDate || new Date(tx.transactionDate) > date) return acc;
+            const amt = tx.amount || 0;
+            const t = tx.transactionType;
+            if (['Deposit', 'InterestPayment', 'FinePayment', 'PrincipalRepayment'].includes(t)) return acc + amt;
+            if (t === 'GeneralExpense') return acc - amt;
+            return acc;
+          }, 0);
+
+          const totalLoansDisbursed = loans.reduce((acc, loan) => {
+            if (!loan.loanDate || new Date(loan.loanDate) > date) return acc;
+            return acc + (loan.loanAmount || 0);
+          }, 0);
+
+          return collections - totalLoansDisbursed;
+        };
+
+        const openingBalance = calcNetPosition(prevMonthEnd);
+        const closingBalance = calcNetPosition(reportEnd);
+
         const filtered = allTransactions.filter(tx => {
           if (scope === "specific" && selectedMemberId && tx.memberId !== selectedMemberId) return false;
           if (!tx.transactionDate) return false;
@@ -119,37 +135,6 @@ export default function ReportsPage() {
           }
           return true;
         }).sort((a, b) => new Date(a.transactionDate || 0).getTime() - new Date(b.transactionDate || 0).getTime());
-
-        // Net Capital Position Reconcilliation
-        const calcNetPosition = (date: Date) => {
-          const collections = allTransactions.reduce((acc, tx) => {
-            if (!tx.transactionDate || new Date(tx.transactionDate) > date) return acc;
-            const amt = tx.amount || 0;
-            const type = tx.transactionType;
-            if (['Deposit', 'InterestPayment', 'FinePayment'].includes(type)) return acc + amt;
-            if (type === 'GeneralExpense') return acc - amt;
-            return acc;
-          }, 0);
-
-          const outstandingAtDate = loans.reduce((acc, loan) => {
-            if (!loan.loanDate) return acc;
-            const lDate = new Date(loan.loanDate);
-            if (lDate > date) return acc;
-            const repaid = allTransactions
-              .filter(tx => 
-                tx.relatedEntityId === loan.id && 
-                tx.transactionType === 'PrincipalRepayment' &&
-                new Date(tx.transactionDate || 0) <= date
-              )
-              .reduce((total, tx) => total + (tx.amount || 0), 0);
-            return acc + Math.max(0, (loan.loanAmount || 0) - repaid);
-          }, 0);
-
-          return collections - outstandingAtDate;
-        };
-
-        const openingBalance = calcNetPosition(prevMonthEnd);
-        const closingBalance = calcNetPosition(reportEnd);
 
         const periodMetrics = filtered.reduce((acc, tx) => {
           const amt = tx.amount || 0;
@@ -180,8 +165,7 @@ export default function ReportsPage() {
         }, 0);
 
         const accumulatedOutstanding = loans.reduce((acc, loan) => {
-          const lDate = new Date(loan.loanDate || 0);
-          if (lDate > reportEnd) return acc;
+          if (!loan.loanDate || new Date(loan.loanDate) > reportEnd) return acc;
           const repaid = allTransactions
             .filter(tx => 
               tx.relatedEntityId === loan.id && 
@@ -195,8 +179,6 @@ export default function ReportsPage() {
         if (format === 'pdf') {
           generatePDFReport({
             reportRange: period === 'all_time' ? 'All Time' : period === 'monthly' ? `${months[reportStart.getMonth()].label} ${reportStart.getFullYear()}` : period === 'yearly' ? `${reportStart.getFullYear()}` : `${reportStart.toLocaleDateString()} to ${reportEnd.toLocaleDateString()}`,
-            prevMonthName: prevMonthLabel,
-            prevMonthYear: prevMonthYear,
             transactionTypeLabel: typeFilters.find(f => f.value === type)?.label || 'All',
             openingBalance,
             periodDeposits: periodMetrics.deposits,
@@ -204,6 +186,7 @@ export default function ReportsPage() {
             periodPrincipal: periodMetrics.principal,
             periodInterest: periodMetrics.interest,
             periodFines: periodMetrics.fines,
+            periodExpenses: periodMetrics.expenses,
             periodNetBalance,
             closingBalance,
             accumulatedDeposits,
@@ -214,7 +197,7 @@ export default function ReportsPage() {
           generateCSVReport(filtered);
         }
 
-        toast({ title: "Report Generated", description: `Report completed with ${filtered.length} entries.` });
+        toast({ title: "Report Generated", description: "Your financial report is ready." });
       } catch (error) {
         console.error("Report generation error:", error);
         toast({ variant: "destructive", title: "Generation Failed", description: "Unexpected error occurred." });
@@ -235,37 +218,38 @@ export default function ReportsPage() {
   const generatePDFReport = (reportData: any) => {
     const doc = new jsPDF();
     const { 
-      reportRange, prevMonthName, prevMonthYear, transactionTypeLabel,
-      openingBalance, periodDeposits, periodLoans, periodPrincipal, periodInterest, periodFines,
+      reportRange, transactionTypeLabel, openingBalance, 
+      periodDeposits, periodLoans, periodPrincipal, periodInterest, periodFines, periodExpenses,
       periodNetBalance, closingBalance, accumulatedDeposits, accumulatedOutstanding, data 
     } = reportData;
 
     doc.setFontSize(22);
-    doc.text(`Group Transactions Report`, 14, 20);
+    doc.text(`Yuva Finance 2 - Financial Report`, 14, 20);
     doc.setFontSize(12);
     doc.text(`Period: ${reportRange}`, 14, 28);
     doc.setTextColor(100);
     doc.text(`Type Filter: ${transactionTypeLabel}`, 14, 34);
 
     const summaryRows = [
-      [`Opening Balance (Historical Carry-over)`, `Rs. ${openingBalance.toLocaleString('en-IN')}`],
-      [`Total Deposits (Period)`, `Rs. ${periodDeposits.toLocaleString('en-IN')}`],
-      [`Total Loans Issued (Period)`, `Rs. ${periodLoans.toLocaleString('en-IN')}`],
-      [`Total Principal Repaid (Period)`, `Rs. ${periodPrincipal.toLocaleString('en-IN')}`],
-      [`Total Interest Earned (Period)`, `Rs. ${periodInterest.toLocaleString('en-IN')}`],
-      [`Total Fines Collected (Period)`, `Rs. ${periodFines.toLocaleString('en-IN')}`],
-      [`Net Activity for Period`, `Rs. ${periodNetBalance.toLocaleString('en-IN')}`],
-      [{ content: `Closing Net Position`, styles: { fontStyle: 'bold' } }, { content: `Rs. ${closingBalance.toLocaleString('en-IN')}`, styles: { fontStyle: 'bold' } }],
-      [`Total Deposits accumulated`, `Rs. ${accumulatedDeposits.toLocaleString('en-IN')}`],
-      [`Total Outstanding Loan Balance`, `Rs. ${accumulatedOutstanding.toLocaleString('en-IN')}`]
+      [`Opening Balance (Historical Position)`, `Rs. ${openingBalance.toLocaleString('en-IN')}`],
+      [`Monthly Deposits`, `+ Rs. ${periodDeposits.toLocaleString('en-IN')}`],
+      [`Interest Received`, `+ Rs. ${periodInterest.toLocaleString('en-IN')}`],
+      [`Principal Recovered`, `+ Rs. ${periodPrincipal.toLocaleString('en-IN')}`],
+      [`Fines Collected`, `+ Rs. ${periodFines.toLocaleString('en-IN')}`],
+      [`Loans Disbursed`, `- Rs. ${periodLoans.toLocaleString('en-IN')}`],
+      [`Expenses`, `- Rs. ${periodExpenses.toLocaleString('en-IN')}`],
+      [`Net Period Change`, `Rs. ${periodNetBalance.toLocaleString('en-IN')}`],
+      [{ content: `Closing Net Position (Remaining Fund)`, styles: { fontStyle: 'bold' } }, { content: `Rs. ${closingBalance.toLocaleString('en-IN')}`, styles: { fontStyle: 'bold' } }],
+      [`Total Deposits Accumulated`, `Rs. ${accumulatedDeposits.toLocaleString('en-IN')}`],
+      [`Current Outstanding Loan Pool`, `Rs. ${accumulatedOutstanding.toLocaleString('en-IN')}`]
     ];
 
     autoTable(doc, {
       startY: 40,
-      head: [['Financial Summary', 'Amount (INR)']],
+      head: [['Financial Summary Metrics', 'Amount (INR)']],
       body: summaryRows,
       theme: 'striped',
-      headStyles: { fillColor: [46, 125, 50], textColor: [255, 255, 255], fontSize: 12 },
+      headStyles: { fillColor: [26, 35, 126], textColor: [255, 255, 255], fontSize: 12 },
       columnStyles: { 1: { halign: 'right' } },
       margin: { top: 40 }
     });
@@ -273,7 +257,7 @@ export default function ReportsPage() {
     const finalY = (doc as any).lastAutoTable.finalY;
     doc.setTextColor(0);
     doc.setFontSize(14);
-    doc.text("Transaction Log:", 14, finalY + 15);
+    doc.text("Detailed Transaction Log:", 14, finalY + 15);
 
     const tableData = data.map((tx: any) => [
       new Date(tx.transactionDate || 0).toLocaleDateString(),
@@ -288,11 +272,11 @@ export default function ReportsPage() {
       head: [['Date', 'Member', 'Type', 'Description', 'Amount']],
       body: tableData,
       theme: 'grid',
-      headStyles: { fillColor: [33, 150, 243], fontSize: 10 },
+      headStyles: { fillColor: [63, 81, 181], fontSize: 10 },
       columnStyles: { 4: { halign: 'right' } }
     });
 
-    doc.save(`Financial_Report_${reportRange.replace(/\s+/g, '_')}.pdf`);
+    doc.save(`Yuva_Finance_Report_${reportRange.replace(/\s+/g, '_')}.pdf`);
   };
 
   const generateCSVReport = (data: any[]) => {
@@ -321,7 +305,6 @@ export default function ReportsPage() {
           </CardHeader>
           
           <CardContent className="space-y-8 pt-4">
-            {/* Export Scope */}
             <div className="space-y-4">
               <Label className="text-sm font-semibold text-slate-700">Export Scope</Label>
               <RadioGroup value={scope} onValueChange={setScope} className="flex flex-col gap-3">
@@ -350,7 +333,6 @@ export default function ReportsPage() {
               )}
             </div>
 
-            {/* Report Period */}
             <div className="space-y-4">
               <Label className="text-sm font-semibold text-slate-700">Report Period</Label>
               <RadioGroup value={period} onValueChange={setPeriod} className="flex flex-col gap-3">
@@ -419,7 +401,6 @@ export default function ReportsPage() {
               )}
             </div>
 
-            {/* Transaction Type */}
             <div className="space-y-4">
               <Label className="text-sm font-semibold text-slate-700">Transaction Type</Label>
               <RadioGroup value={type} onValueChange={setType} className="flex flex-wrap gap-x-8 gap-y-4">
@@ -432,7 +413,6 @@ export default function ReportsPage() {
               </RadioGroup>
             </div>
 
-            {/* File Format */}
             <div className="space-y-4">
               <Label className="text-sm font-semibold text-slate-700">File Format</Label>
               <RadioGroup value={format} onValueChange={setFormat} className="flex flex-row gap-8">
@@ -447,7 +427,6 @@ export default function ReportsPage() {
               </RadioGroup>
             </div>
 
-            {/* Action */}
             <div className="pt-6">
               <Button 
                 onClick={handleGenerateReport} 
