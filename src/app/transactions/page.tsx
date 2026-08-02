@@ -1,3 +1,4 @@
+
 "use client"
 
 import React, { useState } from "react";
@@ -176,7 +177,7 @@ export default function TransactionsPage() {
       repayments: 0,
       expenses: 0,
       remaining: 0,
-      allTimeDeposits: 0
+      allTimeAggregatedDeposits: 0
     };
 
     transactions.forEach(tx => {
@@ -194,11 +195,15 @@ export default function TransactionsPage() {
     });
 
     if (rawTransactions) {
+      let totalDep = 0;
+      let totalInt = 0;
+      let totalFin = 0;
       rawTransactions.forEach(tx => {
-        if (tx.transactionType === 'Deposit') {
-          s.allTimeDeposits += (tx.amount || 0);
-        }
+        if (tx.transactionType === 'Deposit') totalDep += (tx.amount || 0);
+        if (tx.transactionType === 'InterestPayment') totalInt += (tx.amount || 0);
+        if (tx.transactionType === 'FinePayment') totalFin += (tx.amount || 0);
       });
+      s.allTimeAggregatedDeposits = totalDep + totalInt + totalFin;
     }
 
     return s;
@@ -324,7 +329,8 @@ export default function TransactionsPage() {
           />
           <StatCard 
             title="Total Deposits" 
-            value={`₹${Math.abs(stats.allTimeDeposits).toLocaleString()}`}
+            value={`₹${Math.abs(stats.allTimeAggregatedDeposits).toLocaleString()}`}
+            description="Incl. interest & fines"
           />
         </div>
 

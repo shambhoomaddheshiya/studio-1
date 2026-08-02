@@ -96,7 +96,7 @@ export default function Dashboard() {
 
   const globalStats = useMemo(() => {
     const s = {
-      deposits: 0,
+      baseDeposits: 0,
       loansTotalDisbursed: 0,
       interest: 0,
       fines: 0,
@@ -112,7 +112,7 @@ export default function Dashboard() {
         const t = tx.transactionType;
         const impact = tx.balanceImpact;
 
-        if (t === 'Deposit') s.deposits += amt;
+        if (t === 'Deposit') s.baseDeposits += amt;
         if (t === 'InterestPayment') s.interest += amt;
         if (t === 'FinePayment') s.fines += amt;
 
@@ -138,7 +138,11 @@ export default function Dashboard() {
       s.memberInactive = members.filter(m => m.status === 'Inactive').length;
     }
 
-    return s;
+    return {
+      ...s,
+      // Aggregated Total Deposits: Deposits + Interest + Fines
+      totalAggregatedDeposits: s.baseDeposits + s.interest + s.fines
+    };
   }, [allTransactions, loans, members]);
 
   const filteredTransactions = useMemo(() => {
@@ -265,8 +269,8 @@ export default function Dashboard() {
           />
           <StatCard 
             title="Total Deposits" 
-            value={`₹${Math.abs(globalStats.deposits).toLocaleString()}`}
-            description="Global collections"
+            value={`₹${Math.abs(globalStats.totalAggregatedDeposits).toLocaleString()}`}
+            description="Global collections (incl. interest & fines)"
           />
           <StatCard 
             title="Outstanding Loan" 
@@ -362,4 +366,3 @@ export default function Dashboard() {
     </div>
   );
 }
-
