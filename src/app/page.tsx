@@ -94,7 +94,6 @@ export default function Dashboard() {
     return Array.from(years).sort((a, b) => b.localeCompare(a));
   }, [allTransactions]);
 
-  // Global stats for the top summary cards - ALWAYS TOTAL DATA
   const globalStats = useMemo(() => {
     const s = {
       deposits: 0,
@@ -140,7 +139,6 @@ export default function Dashboard() {
     return s;
   }, [allTransactions, loans, members]);
 
-  // Filters apply ONLY to the Monthly Overview section
   const filteredTransactions = useMemo(() => {
     if (!allTransactions) return [];
 
@@ -157,7 +155,6 @@ export default function Dashboard() {
     });
   }, [allTransactions, dateFilterType, viewMonth, viewYear]);
 
-  // Overview stats for the specific time window
   const overviewStats = useMemo(() => {
     const s = {
       deposits: 0,
@@ -177,7 +174,6 @@ export default function Dashboard() {
       if (t === 'PrincipalRepayment') s.principalRecovered += amt;
     });
 
-    // CUMULATIVE: Calculate Closing Balance at the end of the selected period
     if (allTransactions) {
       const periodEnd = dateFilterType === 'monthly'
         ? new Date(parseInt(viewYear), parseInt(viewMonth) + 1, 0, 23, 59, 59)
@@ -188,10 +184,7 @@ export default function Dashboard() {
       s.closingBalance = allTransactions.reduce((acc, tx) => {
         if (!tx.transactionDate) return acc;
         const d = new Date(tx.transactionDate);
-        
-        // Sum everything up to the period end
         if (dateFilterType !== 'all' && d > periodEnd) return acc;
-
         return tx.balanceImpact === 'Credit' ? acc + (tx.amount || 0) : acc - (tx.amount || 0);
       }, 0);
     }
@@ -262,52 +255,38 @@ export default function Dashboard() {
           </div>
         </header>
 
-        {/* Top Summary Row - Displays GLOBAL ALL-TIME Data */}
         <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-5">
           <StatCard 
             title="Total Remaining Fund" 
             value={`₹${Math.abs(globalStats.remaining).toLocaleString()}`}
-            icon={Wallet}
-            iconClassName="bg-blue-50 text-[#3f51b5]"
             description="Global cash available"
           />
           <StatCard 
             title="Total Deposits" 
             value={`₹${Math.abs(globalStats.deposits).toLocaleString()}`}
-            icon={PiggyBank}
-            iconClassName="bg-indigo-50 text-[#3f51b5]"
             description="Global collections"
           />
           <StatCard 
             title="Total Loan Disbursed" 
             value={`₹${Math.abs(globalStats.loans).toLocaleString()}`}
-            icon={Landmark}
-            iconClassName="bg-blue-50 text-[#3f51b5]"
             description="Global disbursements"
           />
           <StatCard 
             title="Total Interest Earned" 
             value={`₹${Math.abs(globalStats.interest).toLocaleString()}`}
-            icon={Scroll}
-            iconClassName="bg-indigo-50 text-[#3f51b5]"
             description="Global interest income"
           />
           <StatCard 
             title="Total Fines Collected" 
             value={`₹${Math.abs(globalStats.fines).toLocaleString()}`}
-            icon={AlertCircle}
-            iconClassName="bg-orange-50 text-orange-600"
             description="Global fine income"
           />
         </div>
 
-        {/* Second Summary Row - Displays GLOBAL ALL-TIME Data */}
         <div className="grid gap-6 md:grid-cols-3">
           <StatCard 
             title="Total Members" 
             value={members?.length || 0}
-            icon={Users}
-            iconClassName="bg-slate-50 text-[#3f51b5]"
             description="Total registrations"
           />
           
@@ -328,9 +307,6 @@ export default function Dashboard() {
                   </div>
                   <p className="text-xs text-muted-foreground mt-2">Active / Inactive</p>
                 </div>
-                <div className="p-3 rounded-xl bg-slate-50 text-[#3f51b5]">
-                  <UserCheck className="h-6 w-6" />
-                </div>
               </div>
             </CardContent>
           </Card>
@@ -338,13 +314,10 @@ export default function Dashboard() {
           <StatCard 
             title="Outstanding Loan" 
             value={`₹${globalStats.outstanding.toLocaleString()}`}
-            icon={Scale}
-            iconClassName="bg-slate-50 text-[#3f51b5]"
             description="Total pending recovery"
           />
         </div>
 
-        {/* Overview Section - Affected by Filter Controls */}
         <div className="grid gap-6">
           <Card className="border-none shadow-sm bg-white max-w-3xl">
             <CardHeader className="flex flex-row items-center justify-between pb-2">
@@ -354,7 +327,6 @@ export default function Dashboard() {
                   Scope: {dateFilterType === 'all' ? 'All Time' : `${months.find(m => m.value === viewMonth)?.label} ${viewYear}`}
                 </p>
               </div>
-              <CalendarCheck className="h-5 w-5 text-[#3f51b5]" />
             </CardHeader>
             <CardContent className="space-y-4 pt-4">
               <div className="flex justify-between items-center text-sm border-b pb-2">
