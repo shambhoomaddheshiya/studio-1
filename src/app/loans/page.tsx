@@ -13,7 +13,7 @@ import {
 } from "@/components/ui/table";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { Plus, Loader2, MoreHorizontal, Edit, Trash2, IndianRupee, Calendar, FileText, Search, User } from "lucide-react";
+import { Plus, Loader2, MoreHorizontal, Edit, Trash2, IndianRupee, Calendar, FileText, Search, User, Filter } from "lucide-react";
 import Link from "next/link";
 import { Card } from "@/components/ui/card";
 import { useFirestore, useCollection, useMemoFirebase, useUser } from "@/firebase";
@@ -52,9 +52,32 @@ import {
   SelectTrigger, 
   SelectValue 
 } from "@/components/ui/select";
+import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { deleteDocumentNonBlocking, updateDocumentNonBlocking } from "@/firebase/non-blocking-updates";
 import { useToast } from "@/hooks/use-toast";
 import { StatCard } from "@/components/dashboard/StatCard";
+import { cn } from "@/lib/utils";
+
+const months = [
+  { value: "0", label: "January" },
+  { value: "1", label: "February" },
+  { value: "2", label: "March" },
+  { value: "3", label: "April" },
+  { value: "4", label: "May" },
+  { value: "5", label: "June" },
+  { value: "6", label: "July" },
+  { value: "7", label: "August" },
+  { value: "8", label: "September" },
+  { value: "9", label: "October" },
+  { value: "10", label: "November" },
+  { value: "11", label: "December" },
+];
+
+const dateFilters = [
+  { value: "all", label: "All Time" },
+  { value: "monthly", label: "Monthly" },
+  { value: "yearly", label: "Yearly" },
+];
 
 export default function LoansPage() {
   const db = useFirestore();
@@ -67,6 +90,9 @@ export default function LoansPage() {
   const [searchTerm, setSearchTerm] = useState("");
   const [statusFilter, setStatusFilter] = useState("All");
   const [memberIdFilter, setMemberIdFilter] = useState("All");
+  const [dateFilterType, setDateFilterType] = useState<string>("all");
+  const [viewMonth, setViewMonth] = useState<string>(new Date().getMonth().toString());
+  const [viewYear, setViewYear] = useState<string>(new Date().getFullYear().toString());
   
   const loansRef = useMemoFirebase(() => {
     if (!db || !user) return null;
@@ -80,6 +106,19 @@ export default function LoansPage() {
     return collection(db, 'members');
   }, [db, user]);
   const { data: members } = useCollection(membersRef);
+
+  const availableYears = React.useMemo(() => {
+    if (!rawLoans) return [];
+    const years = new Set<string>();
+    rawLoans.forEach(loan => {
+      if (loan.loanDate) {
+        years.add(new Date(loan.loanDate).getFullYear().toString());
+      }
+    });
+    const current = new Date().getFullYear().toString();
+    years.add(current);
+    return Array.from(years).sort((a, b) => b.localeCompare(a));
+  }, [rawLoans]);
 
   const loans = React.useMemo(() => {
     if (!rawLoans) return [];
@@ -100,10 +139,19 @@ export default function LoansPage() {
       const matchesMember = 
         memberIdFilter === "All" || 
         loan.memberId === memberIdFilter;
+
+      if (loan.loanDate) {
+        const d = new Date(loan.loanDate);
+        if (dateFilterType === 'monthly') {
+          if (d.getMonth().toString() !== viewMonth || d.getFullYear().toString() !== viewYear) return false;
+        } else if (dateFilterType === 'yearly') {
+          if (d.getFullYear().toString() !== viewYear) return false;
+        }
+      }
       
       return matchesSearch && matchesStatus && matchesMember;
     });
-  }, [rawLoans, members, searchTerm, statusFilter, memberIdFilter]);
+  }, [rawLoans, members, searchTerm, statusFilter, memberIdFilter, dateFilterType, viewMonth, viewYear]);
 
   const filteredStats = React.useMemo(() => {
     return loans.reduce((acc, loan) => {
@@ -252,54 +300,118 @@ export default function LoansPage() {
         </div>
 
         <Card className="border-none shadow-sm overflow-hidden">
-          <div className="p-4 border-b flex flex-col md:flex-row gap-4 items-center justify-between bg-white">
-            <div className="flex flex-col md:flex-row gap-4 w-full md:max-w-2xl">
-              <div className="relative flex-1">
-                <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-                <Input 
-                  placeholder="Search by ID or name..." 
-                  className="pl-10" 
-                  value={searchTerm}
-                  onChange={(e) => setSearchTerm(e.target.value)}
-                />
+          <div className="p-4 border-b space-y-4 bg-white">
+            <div className="flex flex-col md:flex-row gap-4 items-center justify-between">
+              <div className="flex flex-col md:flex-row gap-4 w-full md:max-w-2xl">
+                <div className="relative flex-1">
+                  <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                  <Input 
+                    placeholder="Search by ID or name..." 
+                    className="pl-10" 
+                    value={searchTerm}
+                    onChange={(e) => setSearchTerm(e.target.value)}
+                  />
+                </div>
+                <div className="w-full md:w-64">
+                  <Select value={memberIdFilter} onValueChange={setMemberIdFilter}>
+                    <SelectTrigger className="w-full">
+                      <User className="h-4 w-4 mr-2 text-muted-foreground" />
+                      <SelectValue placeholder="Filter by Member" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="All">All Members</SelectItem>
+                      {members?.map(m => (
+                        <SelectItem key={m.id} value={m.id}>{m.name}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
               </div>
-              <div className="w-full md:w-64">
-                <Select value={memberIdFilter} onValueChange={setMemberIdFilter}>
-                  <SelectTrigger className="w-full">
-                    <User className="h-4 w-4 mr-2 text-muted-foreground" />
-                    <SelectValue placeholder="Filter by Member" />
+              
+              <div className="flex items-center gap-2 w-full md:w-auto overflow-x-auto">
+                <Badge 
+                  variant={statusFilter === "All" ? "default" : "outline"} 
+                  className="cursor-pointer hover:bg-muted py-1.5 px-4 transition-all"
+                  onClick={() => setStatusFilter("All")}
+                >
+                  All
+                </Badge>
+                <Badge 
+                  variant={statusFilter === "Active" ? "default" : "outline"} 
+                  className="cursor-pointer hover:bg-muted py-1.5 px-4 transition-all"
+                  onClick={() => setStatusFilter("Active")}
+                >
+                  Active
+                </Badge>
+                <Badge 
+                  variant={statusFilter === "Closed" ? "default" : "outline"} 
+                  className="cursor-pointer hover:bg-muted py-1.5 px-4 transition-all"
+                  onClick={() => setStatusFilter("Closed")}
+                >
+                  Closed
+                </Badge>
+              </div>
+            </div>
+
+            <div className="flex flex-wrap items-center gap-6 border-t pt-4">
+              <div className="flex items-center gap-2">
+                <Filter className="h-4 w-4 text-primary" />
+                <span className="text-sm font-bold text-[#1e293b]">Filter by Date:</span>
+              </div>
+              
+              <RadioGroup
+                value={dateFilterType}
+                onValueChange={setDateFilterType}
+                className="flex items-center gap-6"
+              >
+                {dateFilters.map((f) => (
+                  <div key={f.value} className="flex items-center space-x-2">
+                    <RadioGroupItem 
+                      value={f.value} 
+                      id={`date-loan-${f.value}`} 
+                      className="h-5 w-5 border-[#3f51b5] text-[#3f51b5]" 
+                    />
+                    <Label htmlFor={`date-loan-${f.value}`} className="font-medium text-slate-600 cursor-pointer">
+                      {f.label}
+                    </Label>
+                  </div>
+                ))}
+              </RadioGroup>
+
+              {(dateFilterType === 'monthly' || dateFilterType === 'yearly') && (
+                <Select value={viewYear} onValueChange={setViewYear}>
+                  <SelectTrigger className="w-[110px] h-9 text-sm bg-[#eef2ff] border-none shadow-none focus:ring-0 text-slate-700 font-medium">
+                    <SelectValue placeholder="Year" />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="All">All Members</SelectItem>
-                    {members?.map(m => (
-                      <SelectItem key={m.id} value={m.id}>{m.name}</SelectItem>
+                    {availableYears.map(year => (
+                      <SelectItem key={year} value={year}>{year}</SelectItem>
                     ))}
                   </SelectContent>
                 </Select>
-              </div>
-            </div>
-            <div className="flex items-center gap-2 w-full md:w-auto overflow-x-auto">
-              <Badge 
-                variant={statusFilter === "All" ? "default" : "outline"} 
-                className="cursor-pointer hover:bg-muted py-1.5 px-4 transition-all"
-                onClick={() => setStatusFilter("All")}
-              >
-                All
-              </Badge>
-              <Badge 
-                variant={statusFilter === "Active" ? "default" : "outline"} 
-                className="cursor-pointer hover:bg-muted py-1.5 px-4 transition-all"
-                onClick={() => setStatusFilter("Active")}
-              >
-                Active
-              </Badge>
-              <Badge 
-                variant={statusFilter === "Closed" ? "default" : "outline"} 
-                className="cursor-pointer hover:bg-muted py-1.5 px-4 transition-all"
-                onClick={() => setStatusFilter("Closed")}
-              >
-                Closed
-              </Badge>
+              )}
+
+              {dateFilterType === 'monthly' && (
+                <Select value={viewMonth} onValueChange={setViewMonth}>
+                  <SelectTrigger className="w-[140px] h-9 text-sm bg-[#eef2ff] border-none shadow-none focus:ring-0 text-slate-700 font-medium">
+                    <SelectValue placeholder="Month" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {months.map(m => (
+                      <SelectItem key={m.value} value={m.value}>{m.label}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              )}
+
+              <Button variant="ghost" size="sm" className="text-slate-500 ml-auto" onClick={() => {
+                setSearchTerm("");
+                setStatusFilter("All");
+                setMemberIdFilter("All");
+                setDateFilterType("all");
+              }}>
+                Clear All Filters
+              </Button>
             </div>
           </div>
 
@@ -389,7 +501,7 @@ export default function LoansPage() {
                   {(loans.length === 0) && !isLoading && (
                     <TableRow>
                       <TableCell colSpan={8} className="h-24 text-center text-muted-foreground">
-                        {searchTerm || statusFilter !== "All" || memberIdFilter !== "All" ? "No loans match your search/filter criteria." : "No loans issued yet."}
+                        {searchTerm || statusFilter !== "All" || memberIdFilter !== "All" || dateFilterType !== "all" ? "No loans match your search/filter criteria." : "No loans issued yet."}
                       </TableCell>
                     </TableRow>
                   )}
@@ -491,3 +603,4 @@ export default function LoansPage() {
     </div>
   );
 }
+
