@@ -97,7 +97,7 @@ export default function Dashboard() {
   const globalStats = useMemo(() => {
     const s = {
       deposits: 0,
-      loans: 0,
+      loansTotalDisbursed: 0,
       interest: 0,
       fines: 0,
       remaining: 0,
@@ -113,7 +113,6 @@ export default function Dashboard() {
         const impact = tx.balanceImpact;
 
         if (t === 'Deposit') s.deposits += amt;
-        if (t === 'LoanDisbursement') s.loans += amt;
         if (t === 'InterestPayment') s.interest += amt;
         if (t === 'FinePayment') s.fines += amt;
 
@@ -124,11 +123,14 @@ export default function Dashboard() {
 
     if (loans) {
       s.outstanding = loans.reduce((acc, loan) => {
-        if (loan.status === 'Active') {
+        if (loan.status !== 'Closed') {
           return acc + (loan.outstandingPrincipal || 0) + (loan.outstandingInterest || 0);
         }
         return acc;
       }, 0);
+      
+      // Calculate Total Disbursed as the original principal of all loans issued
+      s.loansTotalDisbursed = loans.reduce((acc, loan) => acc + (loan.loanAmount || 0), 0);
     }
 
     if (members) {
@@ -267,9 +269,9 @@ export default function Dashboard() {
             description="Global collections"
           />
           <StatCard 
-            title="Total Loan Disbursed" 
-            value={`₹${Math.abs(globalStats.loans).toLocaleString()}`}
-            description="Global disbursements"
+            title="Outstanding Loan" 
+            value={`₹${globalStats.outstanding.toLocaleString()}`}
+            description="Total pending recovery"
           />
           <StatCard 
             title="Total Interest Earned" 
@@ -312,9 +314,9 @@ export default function Dashboard() {
           </Card>
 
           <StatCard 
-            title="Outstanding Loan" 
-            value={`₹${globalStats.outstanding.toLocaleString()}`}
-            description="Total pending recovery"
+            title="Total Loan Disbursed" 
+            value={`₹${globalStats.loansTotalDisbursed.toLocaleString()}`}
+            description="Gross disbursements"
           />
         </div>
 
@@ -360,3 +362,4 @@ export default function Dashboard() {
     </div>
   );
 }
+
