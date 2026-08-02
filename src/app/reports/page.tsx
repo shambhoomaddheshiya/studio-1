@@ -51,6 +51,9 @@ export default function ReportsPage() {
   const transactionsRef = useMemoFirebase(() => collection(db, 'transactions'), [db]);
   const { data: allTransactions } = useCollection(transactionsRef);
 
+  const loansRef = useMemoFirebase(() => collection(db, 'loans'), [db]);
+  const { data: loans } = useCollection(loansRef);
+
   const handleGenerateReport = () => {
     if (!allTransactions) {
       toast({
@@ -93,21 +96,17 @@ export default function ReportsPage() {
           return true;
         }).sort((a, b) => new Date(a.transactionDate || 0).getTime() - new Date(b.transactionDate || 0).getTime());
 
-        // Calculate Balances for the Summary Table
+        // 1. Calculate Ledger Metrics from Transactions
         let openingBalance = 0;
         let accumulatedDeposits = 0;
-        let totalOutstandingLoan = 0;
-        const memberOutstandingMap: Record<string, { name: string, balance: number }> = {};
-
-        // Calculate global metrics up to reportEnd
+        
         allTransactions.forEach(tx => {
           if (!tx.transactionDate) return;
           const d = new Date(tx.transactionDate);
           const amt = tx.amount || 0;
 
           if (d <= reportEnd) {
-            // Scope check for Opening Balance & Accumulated Deposits (if specific member)
-            const isTargetMember = scope === 'specific' && selectedMemberId ? tx.memberId === selectedMemberId : true;
+            const isTargetMember = scope === 'all' || (scope === 'specific' && selectedMemberId && tx.memberId === selectedMemberId);
             
             if (isTargetMember) {
               if (period === 'monthly' && d < monthStart) {
@@ -117,25 +116,35 @@ export default function ReportsPage() {
                 accumulatedDeposits += amt;
               }
             }
-
-            // Outstanding Loan Logic (Always calculate for the footer summary table)
-            if (tx.memberId && tx.memberName) {
-              if (!memberOutstandingMap[tx.memberId]) {
-                memberOutstandingMap[tx.memberId] = { name: tx.memberName, balance: 0 };
-              }
-              if (tx.transactionType === 'LoanDisbursement') {
-                memberOutstandingMap[tx.memberId].balance += amt;
-                if (isTargetMember) totalOutstandingLoan += amt;
-              } else if (tx.transactionType === 'PrincipalRepayment') {
-                memberOutstandingMap[tx.memberId].balance -= amt;
-                if (isTargetMember) totalOutstandingLoan -= amt;
-              } else if (tx.transactionType === 'LoanWaived') {
-                memberOutstandingMap[tx.memberId].balance -= amt;
-                if (isTargetMember) totalOutstandingLoan -= amt;
-              }
-            }
           }
         });
+
+        // 2. Calculate Outstanding Metrics from Loans Collection (Matches Dashboard Source of Truth)
+        let totalOutstandingLoan = 0;
+        const memberOutstandingMap: Record<string, { name: string, balance: number }> = {};
+
+        if (loans) {
+          loans.forEach(loan => {
+            const lDate = new Date(loan.loanDate || 0);
+            // Include loans issued on or before the report end date
+            if (lDate <= reportEnd && loan.status !== 'Closed') {
+              const member = members?.find(m => m.id === loan.memberId);
+              const name = loan.isOutsiderLoan ? (loan.outsiderName || "Outsider") : (member?.name || "Unknown Member");
+              const balance = (loan.outstandingPrincipal || 0) + (loan.outstandingInterest || 0);
+              
+              if (balance > 0) {
+                const isTargetMember = scope === 'all' || (scope === 'specific' && selectedMemberId && loan.memberId === selectedMemberId);
+                if (isTargetMember) {
+                  totalOutstandingLoan += balance;
+                  if (!memberOutstandingMap[loan.memberId || 'outsider']) {
+                    memberOutstandingMap[loan.memberId || 'outsider'] = { name, balance: 0 };
+                  }
+                  memberOutstandingMap[loan.memberId || 'outsider'].balance += balance;
+                }
+              }
+            }
+          });
+        }
 
         if (format === 'pdf') {
           generatePDFReport(filtered, openingBalance, accumulatedDeposits, totalOutstandingLoan, memberOutstandingMap, reportEnd);
@@ -235,7 +244,6 @@ export default function ReportsPage() {
       styles: { fontSize: 10, cellPadding: 4, font: 'helvetica' },
       columnStyles: { 1: { halign: 'right' } },
       didParseCell: function(data) {
-        // Highlighting last few key metric rows
         if (data.row.index >= summaryRows.length - 3) {
           data.cell.styles.fontStyle = 'bold';
         }
@@ -273,7 +281,7 @@ export default function ReportsPage() {
       }
     });
 
-    // New Footer Section: Outstanding Loan Summary by Member
+    // Footer Section: Outstanding Loan Summary by Member
     const outstandingMembersData = Object.entries(memberOutstandingMap)
       .filter(([_, data]) => data.balance > 0)
       .map(([_, data]) => [
@@ -290,7 +298,7 @@ export default function ReportsPage() {
 
       autoTable(doc, {
         startY: 35,
-        head: [['Member Name', 'Pending Principal Balance']],
+        head: [['Member Name', 'Pending Balance (Principal + Int)']],
         body: outstandingMembersData,
         theme: 'grid',
         headStyles: { fillColor: [183, 28, 28], textColor: [255, 255, 255] },
