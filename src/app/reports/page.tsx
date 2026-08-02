@@ -67,6 +67,7 @@ export default function ReportsPage() {
       try {
         const monthStart = new Date(parseInt(selectedYear), parseInt(selectedMonth), 1);
         const monthEnd = new Date(parseInt(selectedYear), parseInt(selectedMonth) + 1, 0, 23, 59, 59);
+        const reportEnd = period === "monthly" ? monthEnd : period === "yearly" ? new Date(parseInt(selectedYear), 11, 31, 23, 59, 59) : (endDate ? new Date(endDate) : new Date());
 
         // Filter transactions for the report table
         const filtered = allTransactions.filter(tx => {
@@ -95,34 +96,49 @@ export default function ReportsPage() {
         // Calculate Balances for the Summary Table
         let openingBalance = 0;
         let accumulatedDeposits = 0;
+        let totalOutstandingLoan = 0;
+        const memberOutstandingMap: Record<string, { name: string, balance: number }> = {};
 
-        if (period === 'monthly') {
-          openingBalance = allTransactions.reduce((acc, tx) => {
-            if (!tx.transactionDate) return acc;
-            const d = new Date(tx.transactionDate);
-            if (d < monthStart) {
-              if (scope === 'specific' && selectedMemberId && tx.memberId !== selectedMemberId) return acc;
-              return tx.balanceImpact === 'Credit' ? acc + (tx.amount || 0) : acc - (tx.amount || 0);
-            }
-            return acc;
-          }, 0);
+        // Calculate global metrics up to reportEnd
+        allTransactions.forEach(tx => {
+          if (!tx.transactionDate) return;
+          const d = new Date(tx.transactionDate);
+          const amt = tx.amount || 0;
 
-          // Combined accumulated total (Deposits + Interest + Fines) up to monthEnd
-          accumulatedDeposits = allTransactions.reduce((acc, tx) => {
-            if (!tx.transactionDate) return acc;
-            const d = new Date(tx.transactionDate);
-            if (d > monthEnd) return acc;
-            if (scope === 'specific' && selectedMemberId && tx.memberId !== selectedMemberId) return acc;
+          if (d <= reportEnd) {
+            // Scope check for Opening Balance & Accumulated Deposits (if specific member)
+            const isTargetMember = scope === 'specific' && selectedMemberId ? tx.memberId === selectedMemberId : true;
             
-            if (['Deposit', 'InterestPayment', 'FinePayment'].includes(tx.transactionType)) {
-              return acc + (tx.amount || 0);
+            if (isTargetMember) {
+              if (period === 'monthly' && d < monthStart) {
+                openingBalance += (tx.balanceImpact === 'Credit' ? amt : -amt);
+              }
+              if (['Deposit', 'InterestPayment', 'FinePayment'].includes(tx.transactionType)) {
+                accumulatedDeposits += amt;
+              }
             }
-            return acc;
-          }, 0);
-        }
+
+            // Outstanding Loan Logic (Always calculate for the footer summary table)
+            if (tx.memberId && tx.memberName) {
+              if (!memberOutstandingMap[tx.memberId]) {
+                memberOutstandingMap[tx.memberId] = { name: tx.memberName, balance: 0 };
+              }
+              if (tx.transactionType === 'LoanDisbursement') {
+                memberOutstandingMap[tx.memberId].balance += amt;
+                if (isTargetMember) totalOutstandingLoan += amt;
+              } else if (tx.transactionType === 'PrincipalRepayment') {
+                memberOutstandingMap[tx.memberId].balance -= amt;
+                if (isTargetMember) totalOutstandingLoan -= amt;
+              } else if (tx.transactionType === 'LoanWaived') {
+                memberOutstandingMap[tx.memberId].balance -= amt;
+                if (isTargetMember) totalOutstandingLoan -= amt;
+              }
+            }
+          }
+        });
 
         if (format === 'pdf') {
-          generatePDFReport(filtered, openingBalance, accumulatedDeposits);
+          generatePDFReport(filtered, openingBalance, accumulatedDeposits, totalOutstandingLoan, memberOutstandingMap, reportEnd);
         } else {
           generateCSVReport(filtered);
         }
@@ -144,7 +160,14 @@ export default function ReportsPage() {
     }, 800);
   };
 
-  const generatePDFReport = (data: any[], openingBalance: number, accumulatedDeposits: number) => {
+  const generatePDFReport = (
+    data: any[], 
+    openingBalance: number, 
+    accumulatedDeposits: number, 
+    totalOutstandingLoan: number,
+    memberOutstandingMap: Record<string, { name: string, balance: number }>,
+    reportEnd: Date
+  ) => {
     const doc = new jsPDF();
     const monthName = period === 'monthly' ? new Date(0, parseInt(selectedMonth)).toLocaleString('default', { month: 'long' }) : '';
     const reportTitle = period === 'monthly' ? `Group Transactions Report: ${monthName} ${selectedYear}` : 'Group Transactions Report';
@@ -180,6 +203,7 @@ export default function ReportsPage() {
     
     const currentPeriodLabel = period === 'monthly' ? `${monthName} ${selectedYear}` : 'Selected Period';
     const prevPeriodLabel = period === 'monthly' ? `${prevMonthNameStr} ${prevMonthYearStr}` : 'Previous Period';
+    const reportEndStr = reportEnd.toISOString().split('T')[0];
 
     const summaryRows = [];
     if (period === 'monthly') {
@@ -190,10 +214,16 @@ export default function ReportsPage() {
     summaryRows.push([`Total Principal Repaid (${currentPeriodLabel})`, `Rs. ${summary.principal.toLocaleString('en-IN')}`]);
     summaryRows.push([`Total Interest Earned (${currentPeriodLabel})`, `Rs. ${summary.interest.toLocaleString('en-IN')}`]);
     summaryRows.push([`Total Fines Collected (${currentPeriodLabel})`, `Rs. ${summary.fines.toLocaleString('en-IN')}`]);
+    
     if (period === 'monthly') {
       summaryRows.push(['Net Balance for Period', `Rs. ${summary.net.toLocaleString('en-IN')}`]);
       summaryRows.push(['Closing Balance', `Rs. ${closingBalance.toLocaleString('en-IN')}`]);
       summaryRows.push([`Total Deposits accumulated (up to ${monthName} ${selectedYear})`, `Rs. ${accumulatedDeposits.toLocaleString('en-IN')}`]);
+      summaryRows.push([`Total Outstanding Loan (up to ${monthName} ${selectedYear})`, `Rs. ${totalOutstandingLoan.toLocaleString('en-IN')}`]);
+    } else {
+      summaryRows.push(['Net Balance for Period', `Rs. ${summary.net.toLocaleString('en-IN')}`]);
+      summaryRows.push([`Total Deposits accumulated (up to ${reportEndStr})`, `Rs. ${accumulatedDeposits.toLocaleString('en-IN')}`]);
+      summaryRows.push([`Total Outstanding Loan (up to ${reportEndStr})`, `Rs. ${totalOutstandingLoan.toLocaleString('en-IN')}`]);
     }
 
     autoTable(doc, {
@@ -205,11 +235,9 @@ export default function ReportsPage() {
       styles: { fontSize: 10, cellPadding: 4, font: 'helvetica' },
       columnStyles: { 1: { halign: 'right' } },
       didParseCell: function(data) {
-        // Highlighting both Closing Balance and Total Accumulated row
-        if (period === 'monthly') {
-          if (data.row.index === summaryRows.length - 2 || data.row.index === summaryRows.length - 1) {
-            data.cell.styles.fontStyle = 'bold';
-          }
+        // Highlighting last few key metric rows
+        if (data.row.index >= summaryRows.length - 3) {
+          data.cell.styles.fontStyle = 'bold';
         }
       }
     });
@@ -244,6 +272,32 @@ export default function ReportsPage() {
         6: { halign: 'right' }
       }
     });
+
+    // New Footer Section: Outstanding Loan Summary by Member
+    const outstandingMembersData = Object.entries(memberOutstandingMap)
+      .filter(([_, data]) => data.balance > 0)
+      .map(([_, data]) => [
+        data.name,
+        `Rs. ${data.balance.toLocaleString('en-IN')}`
+      ]);
+
+    if (outstandingMembersData.length > 0) {
+      doc.addPage();
+      doc.setFontSize(14);
+      doc.text("Outstanding Loan Summary by Member", 14, 20);
+      doc.setFontSize(10);
+      doc.text(`Total Members with Pending Loans: ${outstandingMembersData.length}`, 14, 28);
+
+      autoTable(doc, {
+        startY: 35,
+        head: [['Member Name', 'Pending Principal Balance']],
+        body: outstandingMembersData,
+        theme: 'grid',
+        headStyles: { fillColor: [183, 28, 28], textColor: [255, 255, 255] },
+        styles: { fontSize: 10, cellPadding: 4, font: 'helvetica' },
+        columnStyles: { 1: { halign: 'right' } }
+      });
+    }
 
     doc.save(`YuvaFinance_Report_${new Date().toISOString().split('T')[0]}.pdf`);
   };
