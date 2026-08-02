@@ -113,6 +113,7 @@ export default function ReportsPage() {
           if (t === 'GeneralExpense') globalStats.expenses += amt;
         });
 
+        // Dashboard source of truth for outstanding balance
         globalStats.outstanding = loans.reduce((acc, loan) => {
           if (loan.status !== 'Closed') {
             return acc + (loan.outstandingPrincipal || 0) + (loan.outstandingInterest || 0);
@@ -122,6 +123,18 @@ export default function ReportsPage() {
 
         const totalDepositsGlobal = globalStats.baseDeposits + globalStats.interest + globalStats.fines;
         const remainingGlobal = totalDepositsGlobal - globalStats.outstanding - globalStats.expenses;
+
+        // Data for the "Outstanding Loans Details" section
+        const outstandingLoansList = loans
+          .filter(loan => loan.status !== 'Closed')
+          .map(loan => {
+            const member = members?.find(m => m.id === loan.memberId);
+            return {
+              name: loan.isOutsiderLoan ? (loan.outsiderName || 'Outsider') : (member?.name || 'Unknown'),
+              amount: (loan.outstandingPrincipal || 0) + (loan.outstandingInterest || 0)
+            };
+          })
+          .filter(item => item.amount > 0);
 
         // Period Logic for Log
         let reportStart: Date;
@@ -192,16 +205,17 @@ export default function ReportsPage() {
             closingBalance: remainingGlobal,
             totalDeposits: totalDepositsGlobal,
             totalOutstanding: globalStats.outstanding,
-            data: filtered
+            data: filtered,
+            outstandingLoansList
           });
         } else {
           generateCSVReport(filtered);
         }
 
-        toast({ title: "Report Generated", description: "All values match the dashboard exactly." });
+        toast({ title: "Report Generated", description: "Values match the dashboard exactly." });
       } catch (error) {
         console.error("Report generation error:", error);
-        toast({ variant: "destructive", title: "Generation Failed", description: "Unexpected error occurred." });
+        toast({ variant: "destructive", title: "Generation Failed", description: "An unexpected error occurred." });
       } finally {
         setIsGenerating(false);
       }
@@ -212,22 +226,22 @@ export default function ReportsPage() {
     const doc = new jsPDF();
     const { 
       reportRange, periodDeposits, periodLoans, periodPrincipal, periodInterest, periodFines,
-      periodExpenses, closingBalance, totalDeposits, totalOutstanding, data
+      periodExpenses, closingBalance, totalDeposits, totalOutstanding, data, outstandingLoansList
     } = reportData;
 
     doc.setFontSize(22);
     doc.text(`Group Transactions Report: ${reportRange}`, 14, 20);
 
     const summaryRows = [
-      [`Total Deposits (${reportRange})`, `Rs. ${periodDeposits.toLocaleString('en-IN')}`],
-      [`Total Loans Issued (${reportRange})`, `Rs. ${periodLoans.toLocaleString('en-IN')}`],
-      [`Total Principal Repaid (${reportRange})`, `Rs. ${periodPrincipal.toLocaleString('en-IN')}`],
-      [`Total Interest Earned (${reportRange})`, `Rs. ${periodInterest.toLocaleString('en-IN')}`],
-      [`Total Fines Collected (${reportRange})`, `Rs. ${periodFines.toLocaleString('en-IN')}`],
-      [`Total Expenses (${reportRange})`, `Rs. ${periodExpenses.toLocaleString('en-IN')}`],
+      [`Total Deposits (this period)`, `Rs. ${periodDeposits.toLocaleString('en-IN')}`],
+      [`Total Loans Issued (this period)`, `Rs. ${periodLoans.toLocaleString('en-IN')}`],
+      [`Total Principal Repaid (this period)`, `Rs. ${periodPrincipal.toLocaleString('en-IN')}`],
+      [`Total Interest Earned (this period)`, `Rs. ${periodInterest.toLocaleString('en-IN')}`],
+      [`Total Fines Collected (this period)`, `Rs. ${periodFines.toLocaleString('en-IN')}`],
+      [`Total Expenses (this period)`, `Rs. ${periodExpenses.toLocaleString('en-IN')}`],
       [{ content: `Total Remaining Fund (Net Position)`, styles: { fontStyle: 'bold' } }, { content: `Rs. ${closingBalance.toLocaleString('en-IN')}`, styles: { fontStyle: 'bold' } }],
       [`Total Deposits`, `Rs. ${totalDeposits.toLocaleString('en-IN')}`],
-      [`Outstanding Loan`, `Rs. ${totalOutstanding.toLocaleString('en-IN')}`]
+      [`Total Outstanding Loan`, `Rs. ${totalOutstanding.toLocaleString('en-IN')}`]
     ];
 
     autoTable(doc, {
@@ -239,7 +253,9 @@ export default function ReportsPage() {
       columnStyles: { 1: { halign: 'right' } },
     });
 
-    const finalY = (doc as any).lastAutoTable.finalY;
+    let finalY = (doc as any).lastAutoTable.finalY;
+
+    // Detailed Transaction Log
     doc.setFontSize(14);
     doc.text("Detailed Transaction Log:", 14, finalY + 15);
 
@@ -259,6 +275,32 @@ export default function ReportsPage() {
       headStyles: { fillColor: [63, 81, 181], fontSize: 10 },
       columnStyles: { 4: { halign: 'right' } }
     });
+
+    finalY = (doc as any).lastAutoTable.finalY;
+
+    // Section: Outstanding Loans Details
+    if (outstandingLoansList && outstandingLoansList.length > 0) {
+      if (finalY > 240) {
+        doc.addPage();
+        finalY = 20;
+      }
+      doc.setFontSize(14);
+      doc.text("Outstanding Loans Details:", 14, finalY + 15);
+
+      const outstandingRows = outstandingLoansList.map((item: any) => [
+        item.name,
+        `Rs. ${item.amount.toLocaleString('en-IN')}`
+      ]);
+
+      autoTable(doc, {
+        startY: finalY + 20,
+        head: [['Borrower Name', 'Remaining Balance']],
+        body: outstandingRows,
+        theme: 'striped',
+        headStyles: { fillColor: [198, 40, 40], textColor: [255, 255, 255], fontSize: 10 },
+        columnStyles: { 1: { halign: 'right' } }
+      });
+    }
 
     doc.save(`Yuva_Finance_Report_${reportRange.replace(/\s+/g, '_')}.pdf`);
   };
