@@ -22,6 +22,21 @@ import { Input } from "@/components/ui/input";
 import { jsPDF } from "jspdf";
 import autoTable from "jspdf-autotable";
 
+const months = [
+  { value: "0", label: "January" },
+  { value: "1", label: "February" },
+  { value: "2", label: "March" },
+  { value: "3", label: "April" },
+  { value: "4", label: "May" },
+  { value: "5", label: "June" },
+  { value: "6", label: "July" },
+  { value: "7", label: "August" },
+  { value: "8", label: "September" },
+  { value: "9", label: "October" },
+  { value: "10", label: "November" },
+  { value: "11", label: "December" },
+];
+
 export default function ReportsPage() {
   const { toast } = useToast();
   const db = useFirestore();
@@ -65,9 +80,11 @@ export default function ReportsPage() {
     
     setTimeout(() => {
       try {
-        const monthStart = new Date(parseInt(selectedYear), parseInt(selectedMonth), 1);
-        const monthEnd = new Date(parseInt(selectedYear), parseInt(selectedMonth) + 1, 0, 23, 59, 59);
-        const reportEnd = period === "monthly" ? monthEnd : period === "yearly" ? new Date(parseInt(selectedYear), 11, 31, 23, 59, 59) : (endDate ? new Date(endDate) : new Date());
+        const reportEnd = period === "monthly" 
+          ? new Date(parseInt(selectedYear), parseInt(selectedMonth) + 1, 0, 23, 59, 59)
+          : period === "yearly" 
+            ? new Date(parseInt(selectedYear), 11, 31, 23, 59, 59) 
+            : (endDate ? new Date(endDate) : new Date());
 
         const filtered = allTransactions.filter(tx => {
           if (scope === "specific" && selectedMemberId && tx.memberId !== selectedMemberId) return false;
@@ -87,40 +104,44 @@ export default function ReportsPage() {
           return true;
         }).sort((a, b) => new Date(a.transactionDate || 0).getTime() - new Date(b.transactionDate || 0).getTime());
 
-        // Historical accurate metrics
-        let totalHistoricalLoans = 0;
-        let totalHistoricalOutstanding = 0;
-        const memberOutstandingMap: Record<string, { name: string, balance: number }> = {};
+        // Global Aggregates up to reportEnd (Source of Truth)
+        const globalMetrics = allTransactions.reduce((acc, tx) => {
+          if (!tx.transactionDate || new Date(tx.transactionDate) > reportEnd) return acc;
+          const amt = tx.amount || 0;
+          if (tx.transactionType === 'Deposit') acc.deposits += amt;
+          if (tx.transactionType === 'InterestPayment') acc.interest += amt;
+          if (tx.transactionType === 'FinePayment') acc.fines += amt;
+          if (tx.transactionType === 'GeneralExpense') acc.expenses += amt;
+          return acc;
+        }, { deposits: 0, interest: 0, fines: 0, expenses: 0 });
 
-        loans.forEach(loan => {
+        const globalOutstanding = loans.reduce((acc, loan) => {
           const lDate = new Date(loan.loanDate || 0);
-          if (lDate <= reportEnd) {
-            const isTarget = scope === 'all' || (scope === 'specific' && loan.memberId === selectedMemberId);
-            if (!isTarget) return;
-
-            totalHistoricalLoans += (loan.loanAmount || 0);
-
-            // Calculate historical outstanding at reportEnd
-            const repaymentsToDate = allTransactions.filter(tx => 
+          if (lDate > reportEnd) return acc;
+          
+          // Historical principal recovery
+          const principalRepaid = allTransactions
+            .filter(tx => 
               tx.relatedEntityId === loan.id && 
               tx.transactionType === 'PrincipalRepayment' &&
               new Date(tx.transactionDate || 0) <= reportEnd
-            ).reduce((acc, tx) => acc + (tx.amount || 0), 0);
+            )
+            .reduce((total, tx) => total + (tx.amount || 0), 0);
 
-            const balance = Math.max(0, (loan.loanAmount || 0) - repaymentsToDate);
-            if (balance > 0) {
-              totalHistoricalOutstanding += balance;
-              const name = loan.isOutsiderLoan ? (loan.outsiderName || "Outsider") : (members?.find(m => m.id === loan.memberId)?.name || "Unknown");
-              if (!memberOutstandingMap[loan.memberId || 'outsider']) {
-                memberOutstandingMap[loan.memberId || 'outsider'] = { name, balance: 0 };
-              }
-              memberOutstandingMap[loan.memberId || 'outsider'].balance += balance;
-            }
-          }
-        });
+          const balance = Math.max(0, (loan.loanAmount || 0) - principalRepaid);
+          return acc + balance;
+        }, 0);
+
+        const totalLoansDisbursed = loans.reduce((acc, loan) => {
+          const lDate = new Date(loan.loanDate || 0);
+          if (lDate <= reportEnd) return acc + (loan.loanAmount || 0);
+          return acc;
+        }, 0);
+
+        const netPosition = (globalMetrics.deposits + globalMetrics.interest + globalMetrics.fines) - globalOutstanding - globalMetrics.expenses;
 
         if (format === 'pdf') {
-          generatePDFReport(filtered, totalHistoricalLoans, totalHistoricalOutstanding, memberOutstandingMap, reportEnd);
+          generatePDFReport(filtered, totalLoansDisbursed, globalOutstanding, globalMetrics, netPosition, reportEnd);
         } else {
           generateCSVReport(filtered);
         }
@@ -135,64 +156,54 @@ export default function ReportsPage() {
     }, 800);
   };
 
-  const generatePDFReport = (data: any[], totalLoans: number, outstanding: number, map: any, reportEnd: Date) => {
+  const generatePDFReport = (data: any[], totalLoans: number, outstanding: number, metrics: any, netPos: number, reportEnd: Date) => {
     const doc = new jsPDF();
-    const monthName = period === 'monthly' ? new Date(0, parseInt(selectedMonth)).toLocaleString('default', { month: 'long' }) : '';
+    const monthName = period === 'monthly' ? months.find(m => m.value === selectedMonth)?.label : '';
     const reportTitle = `Yuva Finance 2 - Group Report: ${monthName || 'Period'} ${selectedYear}`;
 
-    doc.setFontSize(18);
+    doc.setFontSize(16);
     doc.text(reportTitle, 14, 20);
 
-    const summary = data.reduce((acc, tx) => {
-      const amt = tx.amount || 0;
-      if (tx.transactionType === 'Deposit') acc.deposits += amt;
-      if (tx.transactionType === 'InterestPayment') acc.interest += amt;
-      if (tx.transactionType === 'FinePayment') acc.fines += amt;
-      if (tx.transactionType === 'PrincipalRepayment') acc.principal += amt;
-      return acc;
-    }, { deposits: 0, interest: 0, fines: 0, principal: 0 });
-
-    const accumulatedColl = allTransactions?.filter(tx => new Date(tx.transactionDate || 0) <= reportEnd && ['Deposit', 'InterestPayment', 'FinePayment'].includes(tx.transactionType))
-      .reduce((acc, tx) => acc + (tx.amount || 0), 0) || 0;
-
-    const netPos = accumulatedColl - outstanding;
-
     const summaryRows = [
-      [`Period Deposits`, `Rs. ${summary.deposits.toLocaleString('en-IN')}`],
-      [`Period Loans Issued (Source of Truth)`, `Rs. ${data.filter(tx => tx.transactionType === 'LoanDisbursement').reduce((acc, tx) => acc + (tx.amount || 0), 0).toLocaleString('en-IN')}`],
-      [`Period Principal Recovered`, `Rs. ${summary.principal.toLocaleString('en-IN')}`],
-      [`Total Accumulated Collections`, `Rs. ${accumulatedColl.toLocaleString('en-IN')}`],
-      [`Total Outstanding Principal (as of ${reportEnd.toLocaleDateString()})`, `Rs. ${outstanding.toLocaleString('en-IN')}`],
-      [`Net Capital Position (Closing Balance)`, `Rs. ${netPos.toLocaleString('en-IN')}`]
+      [`Total Collected Deposits`, `Rs. ${metrics.deposits.toLocaleString('en-IN')}`],
+      [`Total Interest Earned`, `Rs. ${metrics.interest.toLocaleString('en-IN')}`],
+      [`Total Fines Collected`, `Rs. ${metrics.fines.toLocaleString('en-IN')}`],
+      [`Total Loans Disbursed (Registry)`, `Rs. ${totalLoans.toLocaleString('en-IN')}`],
+      [`Total Outstanding Principal`, `Rs. ${outstanding.toLocaleString('en-IN')}`],
+      [`Total Accumulated Expenses`, `Rs. ${metrics.expenses.toLocaleString('en-IN')}`],
+      [`Net Capital Position (Remaining Fund)`, `Rs. ${netPos.toLocaleString('en-IN')}`]
     ];
 
     autoTable(doc, {
       startY: 30,
-      head: [['Summary Metric', 'Amount (INR)']],
+      head: [['Global Summary Metric', 'Amount (INR)']],
       body: summaryRows,
       theme: 'striped',
-      headStyles: { fillColor: [21, 101, 192] },
-      columnStyles: { 1: { halign: 'right' } }
+      headStyles: { fillColor: [26, 31, 54] },
+      columnStyles: { 1: { halign: 'right', fontStyle: 'bold' } }
     });
 
+    doc.setFontSize(12);
+    doc.text("Period Transaction Activity:", 14, (doc as any).lastAutoTable.finalY + 15);
+
     const tableData = data.map(tx => [
-      tx.memberName || 'N/A',
       new Date(tx.transactionDate || 0).toLocaleDateString(),
+      tx.memberName || 'N/A',
       tx.transactionType.replace(/([A-Z])/g, ' $1').trim(),
       tx.comment || '-',
       `Rs. ${tx.amount.toLocaleString('en-IN')}`
     ]);
 
     autoTable(doc, {
-      startY: (doc as any).lastAutoTable.finalY + 15,
-      head: [['Member', 'Date', 'Type', 'Description', 'Amount']],
+      startY: (doc as any).lastAutoTable.finalY + 20,
+      head: [['Date', 'Member', 'Type', 'Description', 'Amount']],
       body: tableData,
       theme: 'grid',
-      headStyles: { fillColor: [46, 125, 50] },
+      headStyles: { fillColor: [63, 81, 181] },
       columnStyles: { 4: { halign: 'right' } }
     });
 
-    doc.save(`Report_${new Date().toISOString().split('T')[0]}.pdf`);
+    doc.save(`Financial_Report_${new Date().toISOString().split('T')[0]}.pdf`);
   };
 
   const generateCSVReport = (data: any[]) => {
@@ -209,7 +220,7 @@ export default function ReportsPage() {
     <div className="min-h-screen flex flex-col bg-slate-50">
       <Navbar />
       <main className="flex-1 p-4 sm:p-8 max-w-4xl mx-auto w-full space-y-6">
-        <h1 className="text-4xl font-bold tracking-tight text-[#1e293b]">Export Reports</h1>
+        <h1 className="text-4xl font-bold tracking-tight text-[#1a1f36]">Export Reports</h1>
         <Card className="border border-slate-200 shadow-sm rounded-xl">
           <CardHeader>
             <CardTitle>Configure Export</CardTitle>
@@ -239,7 +250,11 @@ export default function ReportsPage() {
                 <div className="flex gap-2 mt-2">
                   <Select value={selectedMonth} onValueChange={setSelectedMonth}>
                     <SelectTrigger className="flex-1"><SelectValue /></SelectTrigger>
-                    <SelectContent>{months.map(m => <SelectItem key={m.value} value={m.value}>{m.label}</SelectItem>)}</SelectContent>
+                    <SelectContent>
+                      {months.map(m => (
+                        <SelectItem key={m.value} value={m.value}>{m.label}</SelectItem>
+                      ))}
+                    </SelectContent>
                   </Select>
                   <Input type="number" value={selectedYear} onChange={e => setSelectedYear(e.target.value)} className="w-24" />
                 </div>
