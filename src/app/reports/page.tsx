@@ -19,7 +19,7 @@ import { collection, getDocs } from "firebase/firestore";
 import { useToast } from "@/hooks/use-toast";
 import { Loader2 } from "lucide-react";
 import { Input } from "@/components/ui/input";
-import { jsPDF } from "jsPDF";
+import { jsPDF } from "jspdf";
 import autoTable from "jspdf-autotable";
 
 const months = [
@@ -108,7 +108,7 @@ export default function ReportsPage() {
         return;
       }
 
-      // 3. DASHBOARD SYNC LOGIC (Same logic as src/app/page.tsx)
+      // 3. DASHBOARD SYNC LOGIC
       const globalStats = {
         baseDeposits: 0,
         interest: 0,
@@ -136,7 +136,7 @@ export default function ReportsPage() {
       const totalDepositsGlobal = globalStats.baseDeposits + globalStats.interest + globalStats.fines;
       const remainingGlobal = totalDepositsGlobal - globalStats.outstanding - globalStats.expenses;
 
-      // Outstanding list breakdown - SOURCE OF TRUTH FOR NAMES + A-Z SORT
+      // Outstanding list breakdown - A-Z SORT
       const outstandingLoansList = freshLoans
         .filter(loan => loan.status !== 'Closed')
         .map(loan => {
@@ -172,7 +172,7 @@ export default function ReportsPage() {
                               period === 'all_time' ? 'All Time' : 
                               'Selected Period';
 
-      // 4. DETAILED TRANSACTION LOG - SYNC NAMES FROM MEMBER TABLE + A-Z SORT
+      // 4. DETAILED TRANSACTION LOG - SYNC NAMES + A-Z SORT
       const filtered = freshTransactions
         .filter(tx => {
           if (scope === "specific" && selectedMemberId && tx.memberId !== selectedMemberId) return false;
@@ -190,7 +190,6 @@ export default function ReportsPage() {
           return true;
         })
         .map(tx => {
-          // Force use current member name from Members table
           const currentMember = memberMap.get(tx.memberId);
           return {
             ...tx,
@@ -242,7 +241,7 @@ export default function ReportsPage() {
         generateCSVReport(filtered);
       }
 
-      toast({ title: "Report Generated", description: "All names reflect current Member records." });
+      toast({ title: "Report Generated", description: "Successfully exported." });
     } catch (error: any) {
       console.error("Report generation error:", error);
       toast({ variant: "destructive", title: "Generation Failed", description: error.message || "An unexpected error occurred." });
