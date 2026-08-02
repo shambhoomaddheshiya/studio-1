@@ -1,4 +1,3 @@
-
 "use client"
 
 import React, { useState } from "react";
@@ -15,7 +14,7 @@ import {
   SelectValue 
 } from "@/components/ui/select";
 import { useFirestore, useCollection, useMemoFirebase } from "@/firebase";
-import { collection } from "firebase/firestore";
+import { collection, getDocs } from "firebase/firestore";
 import { useToast } from "@/hooks/use-toast";
 import { Loader2 } from "lucide-react";
 import { Input } from "@/components/ui/input";
@@ -75,151 +74,155 @@ export default function ReportsPage() {
     return [...members].sort((a, b) => (a.name || "").localeCompare(b.name || ""));
   }, [members]);
 
-  const transactionsRef = useMemoFirebase(() => collection(db, 'transactions'), [db]);
-  const { data: allTransactions } = useCollection(transactionsRef);
-
-  const loansRef = useMemoFirebase(() => collection(db, 'loans'), [db]);
-  const { data: loans } = useCollection(loansRef);
-
-  const handleGenerateReport = () => {
-    if (!allTransactions || !loans) {
-      toast({
-        variant: "destructive",
-        title: "No data available",
-        description: "Records are still loading or do not exist.",
-      });
-      return;
-    }
-
+  const handleGenerateReport = async () => {
     setIsGenerating(true);
     
-    setTimeout(() => {
-      try {
-        // EXACT DASHBOARD LOGIC (Global Stats for reconciliation)
-        const globalStats = {
-          baseDeposits: 0,
-          interest: 0,
-          fines: 0,
-          expenses: 0,
-          outstanding: 0,
-        };
+    try {
+      // FETCH FRESH DATA DIRECTLY FROM DATABASE TO AVOID STALE CACHED DATA
+      const [membersSnap, txSnap, loansSnap] = await Promise.all([
+        getDocs(collection(db, 'members')),
+        getDocs(collection(db, 'transactions')),
+        getDocs(collection(db, 'loans'))
+      ]);
 
-        allTransactions.forEach(tx => {
-          const amt = tx.amount || 0;
-          const t = tx.transactionType;
-          if (t === 'Deposit') globalStats.baseDeposits += amt;
-          if (t === 'InterestPayment') globalStats.interest += amt;
-          if (t === 'FinePayment') globalStats.fines += amt;
-          if (t === 'GeneralExpense') globalStats.expenses += amt;
+      const freshMembers = membersSnap.docs.map(d => ({ id: d.id, ...d.data() })) as any[];
+      const freshTransactions = txSnap.docs.map(d => ({ id: d.id, ...d.data() })) as any[];
+      const freshLoans = loansSnap.docs.map(d => ({ id: d.id, ...d.data() })) as any[];
+
+      if (freshTransactions.length === 0 && freshLoans.length === 0) {
+        toast({
+          variant: "destructive",
+          title: "No data available",
+          description: "No records found in the database to generate a report.",
         });
-
-        // Dashboard source of truth for outstanding balance
-        globalStats.outstanding = loans.reduce((acc, loan) => {
-          if (loan.status !== 'Closed') {
-            return acc + (loan.outstandingPrincipal || 0) + (loan.outstandingInterest || 0);
-          }
-          return acc;
-        }, 0);
-
-        const totalDepositsGlobal = globalStats.baseDeposits + globalStats.interest + globalStats.fines;
-        const remainingGlobal = totalDepositsGlobal - globalStats.outstanding - globalStats.expenses;
-
-        // Data for the "Outstanding Loans Details" section
-        const outstandingLoansList = loans
-          .filter(loan => loan.status !== 'Closed')
-          .map(loan => {
-            const member = members?.find(m => m.id === loan.memberId);
-            return {
-              name: loan.isOutsiderLoan ? (loan.outsiderName || 'Outsider') : (member?.name || 'Unknown'),
-              amount: (loan.outstandingPrincipal || 0) + (loan.outstandingInterest || 0)
-            };
-          })
-          .filter(item => item.amount > 0);
-
-        // Period Logic for Log
-        let reportStart: Date;
-        let reportEnd: Date;
-
-        if (period === "monthly") {
-          reportStart = new Date(parseInt(selectedYear), parseInt(selectedMonth), 1, 0, 0, 0);
-          reportEnd = new Date(parseInt(selectedYear), parseInt(selectedMonth) + 1, 0, 23, 59, 59);
-        } else if (period === "yearly") {
-          reportStart = new Date(parseInt(selectedYear), 0, 1, 0, 0, 0);
-          reportEnd = new Date(parseInt(selectedYear), 11, 31, 23, 59, 59);
-        } else if (period === "custom") {
-          reportStart = startDate ? new Date(startDate) : new Date(0);
-          reportEnd = endDate ? new Date(endDate) : new Date();
-        } else {
-          reportStart = new Date(0);
-          reportEnd = new Date();
-        }
-
-        const currentMonthLabel = period === 'monthly' ? `${months[parseInt(selectedMonth)].label} ${selectedYear}` : 
-                                period === 'yearly' ? `${selectedYear}` : 
-                                period === 'all_time' ? 'All Time' : 
-                                'Selected Period';
-
-        const filtered = allTransactions.filter(tx => {
-          if (scope === "specific" && selectedMemberId && tx.memberId !== selectedMemberId) return false;
-          if (!tx.transactionDate) return false;
-          const txDate = new Date(tx.transactionDate);
-          if (txDate < reportStart || txDate > reportEnd) return false;
-          
-          if (type !== 'all') {
-            const t = tx.transactionType;
-            if (type === "deposits" && t !== 'Deposit') return false;
-            if (type === "loans" && t !== 'LoanDisbursement') return false;
-            if (type === "repayments" && !['PrincipalRepayment', 'InterestPayment', 'FinePayment'].includes(t)) return false;
-            if (type === "deposits_repayments" && !['Deposit', 'PrincipalRepayment', 'InterestPayment', 'FinePayment'].includes(t)) return false;
-          }
-          return true;
-        }).sort((a, b) => new Date(a.transactionDate || 0).getTime() - new Date(b.transactionDate || 0).getTime());
-
-        const periodMetrics = filtered.reduce((acc, tx) => {
-          const amt = tx.amount || 0;
-          const t = tx.transactionType;
-          if (t === 'Deposit') acc.deposits += amt;
-          else if (t === 'PrincipalRepayment') acc.principal += amt;
-          else if (t === 'InterestPayment') acc.interest += amt;
-          else if (t === 'FinePayment') acc.fines += amt;
-          else if (t === 'GeneralExpense') acc.expenses += amt;
-          return acc;
-        }, { deposits: 0, loans: 0, principal: 0, interest: 0, fines: 0, expenses: 0 });
-
-        periodMetrics.loans = loans.reduce((acc, loan) => {
-          if (!loan.loanDate) return acc;
-          const lDate = new Date(loan.loanDate);
-          if (lDate >= reportStart && lDate <= reportEnd) return acc + (loan.loanAmount || 0);
-          return acc;
-        }, 0);
-
-        if (format === 'pdf') {
-          generatePDFReport({
-            reportRange: currentMonthLabel,
-            periodDeposits: periodMetrics.deposits,
-            periodLoans: periodMetrics.loans,
-            periodPrincipal: periodMetrics.principal,
-            periodInterest: periodMetrics.interest,
-            periodFines: periodMetrics.fines,
-            periodExpenses: periodMetrics.expenses,
-            closingBalance: remainingGlobal,
-            totalDeposits: totalDepositsGlobal,
-            totalOutstanding: globalStats.outstanding,
-            data: filtered,
-            outstandingLoansList
-          });
-        } else {
-          generateCSVReport(filtered);
-        }
-
-        toast({ title: "Report Generated", description: "Values match the dashboard exactly." });
-      } catch (error) {
-        console.error("Report generation error:", error);
-        toast({ variant: "destructive", title: "Generation Failed", description: "An unexpected error occurred." });
-      } finally {
         setIsGenerating(false);
+        return;
       }
-    }, 800);
+
+      // EXACT DASHBOARD LOGIC (Global Stats for reconciliation)
+      const globalStats = {
+        baseDeposits: 0,
+        interest: 0,
+        fines: 0,
+        expenses: 0,
+        outstanding: 0,
+      };
+
+      freshTransactions.forEach(tx => {
+        const amt = tx.amount || 0;
+        const t = tx.transactionType;
+        if (t === 'Deposit') globalStats.baseDeposits += amt;
+        if (t === 'InterestPayment') globalStats.interest += amt;
+        if (t === 'FinePayment') globalStats.fines += amt;
+        if (t === 'GeneralExpense') globalStats.expenses += amt;
+      });
+
+      // Dashboard source of truth for outstanding balance
+      globalStats.outstanding = freshLoans.reduce((acc, loan) => {
+        if (loan.status !== 'Closed') {
+          return acc + (loan.outstandingPrincipal || 0) + (loan.outstandingInterest || 0);
+        }
+        return acc;
+      }, 0);
+
+      const totalDepositsGlobal = globalStats.baseDeposits + globalStats.interest + globalStats.fines;
+      const remainingGlobal = totalDepositsGlobal - globalStats.outstanding - globalStats.expenses;
+
+      // Data for the "Outstanding Loans Details" section
+      const outstandingLoansList = freshLoans
+        .filter(loan => loan.status !== 'Closed')
+        .map(loan => {
+          const member = freshMembers.find(m => m.id === loan.memberId);
+          return {
+            name: loan.isOutsiderLoan ? (loan.outsiderName || 'Outsider') : (member?.name || 'Unknown'),
+            amount: (loan.outstandingPrincipal || 0) + (loan.outstandingInterest || 0)
+          };
+        })
+        .filter(item => item.amount > 0);
+
+      // Period Logic for Log
+      let reportStart: Date;
+      let reportEnd: Date;
+
+      if (period === "monthly") {
+        reportStart = new Date(parseInt(selectedYear), parseInt(selectedMonth), 1, 0, 0, 0);
+        reportEnd = new Date(parseInt(selectedYear), parseInt(selectedMonth) + 1, 0, 23, 59, 59);
+      } else if (period === "yearly") {
+        reportStart = new Date(parseInt(selectedYear), 0, 1, 0, 0, 0);
+        reportEnd = new Date(parseInt(selectedYear), 11, 31, 23, 59, 59);
+      } else if (period === "custom") {
+        reportStart = startDate ? new Date(startDate) : new Date(0);
+        reportEnd = endDate ? new Date(endDate) : new Date();
+      } else {
+        reportStart = new Date(0);
+        reportEnd = new Date();
+      }
+
+      const currentMonthLabel = period === 'monthly' ? `${months[parseInt(selectedMonth)].label} ${selectedYear}` : 
+                              period === 'yearly' ? `${selectedYear}` : 
+                              period === 'all_time' ? 'All Time' : 
+                              'Selected Period';
+
+      const filtered = freshTransactions.filter(tx => {
+        if (scope === "specific" && selectedMemberId && tx.memberId !== selectedMemberId) return false;
+        if (!tx.transactionDate) return false;
+        const txDate = new Date(tx.transactionDate);
+        if (txDate < reportStart || txDate > reportEnd) return false;
+        
+        if (type !== 'all') {
+          const t = tx.transactionType;
+          if (type === "deposits" && t !== 'Deposit') return false;
+          if (type === "loans" && t !== 'LoanDisbursement') return false;
+          if (type === "repayments" && !['PrincipalRepayment', 'InterestPayment', 'FinePayment'].includes(t)) return false;
+          if (type === "deposits_repayments" && !['Deposit', 'PrincipalRepayment', 'InterestPayment', 'FinePayment'].includes(t)) return false;
+        }
+        return true;
+      }).sort((a, b) => new Date(a.transactionDate || 0).getTime() - new Date(b.transactionDate || 0).getTime());
+
+      const periodMetrics = filtered.reduce((acc, tx) => {
+        const amt = tx.amount || 0;
+        const t = tx.transactionType;
+        if (t === 'Deposit') acc.deposits += amt;
+        else if (t === 'PrincipalRepayment') acc.principal += amt;
+        else if (t === 'InterestPayment') acc.interest += amt;
+        else if (t === 'FinePayment') acc.fines += amt;
+        else if (t === 'GeneralExpense') acc.expenses += amt;
+        return acc;
+      }, { deposits: 0, loans: 0, principal: 0, interest: 0, fines: 0, expenses: 0 });
+
+      periodMetrics.loans = freshLoans.reduce((acc, loan) => {
+        if (!loan.loanDate) return acc;
+        const lDate = new Date(loan.loanDate);
+        if (lDate >= reportStart && lDate <= reportEnd) return acc + (loan.loanAmount || 0);
+        return acc;
+      }, 0);
+
+      if (format === 'pdf') {
+        generatePDFReport({
+          reportRange: currentMonthLabel,
+          periodDeposits: periodMetrics.deposits,
+          periodLoans: periodMetrics.loans,
+          periodPrincipal: periodMetrics.principal,
+          periodInterest: periodMetrics.interest,
+          periodFines: periodMetrics.fines,
+          periodExpenses: periodMetrics.expenses,
+          closingBalance: remainingGlobal,
+          totalDeposits: totalDepositsGlobal,
+          totalOutstanding: globalStats.outstanding,
+          data: filtered,
+          outstandingLoansList
+        });
+      } else {
+        generateCSVReport(filtered);
+      }
+
+      toast({ title: "Report Generated", description: "Values match the latest database records." });
+    } catch (error: any) {
+      console.error("Report generation error:", error);
+      toast({ variant: "destructive", title: "Generation Failed", description: error.message || "An unexpected error occurred." });
+    } finally {
+      setIsGenerating(false);
+    }
   };
 
   const generatePDFReport = (reportData: any) => {
