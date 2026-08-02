@@ -15,7 +15,7 @@ import {
   SelectValue 
 } from "@/components/ui/select";
 import { useFirestore, useCollection, useMemoFirebase } from "@/firebase";
-import { collection, getDocs, query, where } from "firebase/firestore";
+import { collection, getDocs } from "firebase/firestore";
 import { useToast } from "@/hooks/use-toast";
 import { Loader2 } from "lucide-react";
 import { Input } from "@/components/ui/input";
@@ -79,7 +79,7 @@ export default function ReportsPage() {
     setIsGenerating(true);
     
     try {
-      // 1. FETCH FRESH DATA DIRECTLY FROM DATABASE (Source of Truth)
+      // 1. FETCH FRESH DATA DIRECTLY FROM DATABASE
       const [membersSnap, txSnap, loansSnap] = await Promise.all([
         getDocs(collection(db, 'members')),
         getDocs(collection(db, 'transactions')),
@@ -90,7 +90,7 @@ export default function ReportsPage() {
       const rawTransactions = txSnap.docs.map(d => ({ id: d.id, ...d.data() })) as any[];
       const rawLoans = loansSnap.docs.map(d => ({ id: d.id, ...d.data() })) as any[];
 
-      // 2. CRITICAL: Filter out data belonging to deleted members (Orphan cleanup)
+      // 2. CRITICAL: Filter Orphans
       const activeMemberIds = new Set(freshMembers.map(m => m.id));
       const freshTransactions = rawTransactions.filter(tx => !tx.memberId || activeMemberIds.has(tx.memberId));
       const freshLoans = rawLoans.filter(loan => !loan.memberId || activeMemberIds.has(loan.memberId));
@@ -105,7 +105,7 @@ export default function ReportsPage() {
         return;
       }
 
-      // 3. EXACT DASHBOARD SYNC LOGIC
+      // 3. DASHBOARD SYNC LOGIC
       const globalStats = {
         baseDeposits: 0,
         interest: 0,
@@ -133,7 +133,7 @@ export default function ReportsPage() {
       const totalDepositsGlobal = globalStats.baseDeposits + globalStats.interest + globalStats.fines;
       const remainingGlobal = totalDepositsGlobal - globalStats.outstanding - globalStats.expenses;
 
-      // Outstanding list breakdown
+      // Outstanding list breakdown - SORTED ALPHABETICALLY
       const outstandingLoansList = freshLoans
         .filter(loan => loan.status !== 'Closed')
         .map(loan => {
@@ -143,9 +143,10 @@ export default function ReportsPage() {
             amount: (loan.outstandingPrincipal || 0) + (loan.outstandingInterest || 0)
           };
         })
-        .filter(item => item.amount > 0);
+        .filter(item => item.amount > 0)
+        .sort((a, b) => a.name.localeCompare(b.name));
 
-      // Period Logic
+      // Period Selection Logic
       let reportStart: Date;
       let reportEnd: Date;
 
@@ -168,6 +169,7 @@ export default function ReportsPage() {
                               period === 'all_time' ? 'All Time' : 
                               'Selected Period';
 
+      // Detailed transaction list - SORTED ALPHABETICALLY BY NAME
       const filtered = freshTransactions.filter(tx => {
         if (scope === "specific" && selectedMemberId && tx.memberId !== selectedMemberId) return false;
         if (!tx.transactionDate) return false;
@@ -182,7 +184,14 @@ export default function ReportsPage() {
           if (type === "deposits_repayments" && !['Deposit', 'PrincipalRepayment', 'InterestPayment', 'FinePayment'].includes(t)) return false;
         }
         return true;
-      }).sort((a, b) => new Date(a.transactionDate || 0).getTime() - new Date(b.transactionDate || 0).getTime());
+      }).sort((a, b) => {
+        const nameA = (a.memberName || "").toLowerCase();
+        const nameB = (b.memberName || "").toLowerCase();
+        if (nameA < nameB) return -1;
+        if (nameA > nameB) return 1;
+        // Secondary sort by date if names are same
+        return new Date(a.transactionDate || 0).getTime() - new Date(b.transactionDate || 0).getTime();
+      });
 
       const periodMetrics = filtered.reduce((acc, tx) => {
         const amt = tx.amount || 0;
@@ -264,7 +273,7 @@ export default function ReportsPage() {
     let finalY = (doc as any).lastAutoTable.finalY;
 
     doc.setFontSize(14);
-    doc.text("Detailed Transaction Log:", 14, finalY + 15);
+    doc.text("Detailed Transaction Log (A-Z by Name):", 14, finalY + 15);
 
     const tableData = data.map((tx: any) => [
       new Date(tx.transactionDate || 0).toLocaleDateString(),
@@ -291,7 +300,7 @@ export default function ReportsPage() {
         finalY = 20;
       }
       doc.setFontSize(14);
-      doc.text("Outstanding Loans Details:", 14, finalY + 15);
+      doc.text("Outstanding Loans Details (A-Z by Name):", 14, finalY + 15);
 
       const outstandingRows = outstandingLoansList.map((item: any) => [
         item.name,
