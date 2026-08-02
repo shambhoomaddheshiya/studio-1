@@ -17,11 +17,10 @@ import {
 import { useFirestore, useCollection, useMemoFirebase } from "@/firebase";
 import { collection } from "firebase/firestore";
 import { useToast } from "@/hooks/use-toast";
-import { Loader2, Calendar as CalendarIcon } from "lucide-react";
+import { Loader2 } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { jsPDF } from "jspdf";
 import autoTable from "jspdf-autotable";
-import { cn } from "@/lib/utils";
 
 const months = [
   { value: "0", label: "January" },
@@ -67,8 +66,11 @@ export default function ReportsPage() {
   const loansRef = useMemoFirebase(() => collection(db, 'loans'), [db]);
   const { data: loans } = useCollection(loansRef);
 
+  const repaymentsRef = useMemoFirebase(() => collection(db, 'repaymentEntries'), [db]);
+  const { data: allRepaymentEntries } = useCollection(repaymentsRef);
+
   const handleGenerateReport = () => {
-    if (!allTransactions || !loans) {
+    if (!allTransactions || !loans || !allRepaymentEntries) {
       toast({
         variant: "destructive",
         title: "No data available",
@@ -175,16 +177,23 @@ export default function ReportsPage() {
           return acc;
         }, 0);
 
-        // DASHBOARD SYNC: Total Outstanding = Principal Issued - Principal Repaid up to reportEnd
+        // DASHBOARD SYNC: Total Outstanding = Total Principal Issued - Principal Repaid up to reportEnd
         const totalOutstandingToMatchDashboard = loans.reduce((acc, loan) => {
           if (!loan.loanDate || new Date(loan.loanDate) > reportEnd) return acc;
+          
+          // Link repayments to this specific loan via the bridge entities
+          const loanRepaymentEntryIds = allRepaymentEntries
+            .filter(re => re.loanId === loan.id)
+            .map(re => re.id);
+
           const repaid = allTransactions
             .filter(tx => 
               tx.transactionType === 'PrincipalRepayment' &&
               new Date(tx.transactionDate || 0) <= reportEnd &&
-              (tx.relatedEntityId === loan.id || tx.comment?.includes(loan.id))
+              loanRepaymentEntryIds.includes(tx.relatedEntityId)
             )
             .reduce((total, tx) => total + (tx.amount || 0), 0);
+            
           return acc + Math.max(0, (loan.loanAmount || 0) - repaid);
         }, 0);
 
