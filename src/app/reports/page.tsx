@@ -158,15 +158,25 @@ export default function ReportsPage() {
 
     const closingBalance = openingBalance + summary.net;
 
+    // Calculate dynamic month labels for Opening Balance and Current Transactions
+    const monthStart = new Date(parseInt(selectedYear), parseInt(selectedMonth), 1);
+    const prevMonthDate = new Date(monthStart);
+    prevMonthDate.setMonth(prevMonthDate.getMonth() - 1);
+    const prevMonthNameStr = prevMonthDate.toLocaleString('default', { month: 'long' });
+    const prevMonthYearStr = prevMonthDate.getFullYear();
+    
+    const currentPeriodLabel = period === 'monthly' ? `${monthName} ${selectedYear}` : 'Selected Period';
+    const prevPeriodLabel = period === 'monthly' ? `${prevMonthNameStr} ${prevMonthYearStr}` : 'Previous Period';
+
     const summaryRows = [];
     if (period === 'monthly') {
-      summaryRows.push(['Opening Balance (Prev. Month Closing)', `Rs. ${openingBalance.toLocaleString('en-IN')}`]);
+      summaryRows.push([`Opening Balance (${prevPeriodLabel} Closing)`, `Rs. ${openingBalance.toLocaleString('en-IN')}`]);
     }
-    summaryRows.push(['Total Deposits (Current Month)', `Rs. ${summary.deposits.toLocaleString('en-IN')}`]);
-    summaryRows.push(['Total Loans Issued (Current Month)', `Rs. ${summary.loans.toLocaleString('en-IN')}`]);
-    summaryRows.push(['Total Principal Repaid (Current Month)', `Rs. ${summary.principal.toLocaleString('en-IN')}`]);
-    summaryRows.push(['Total Interest Earned (Current Month)', `Rs. ${summary.interest.toLocaleString('en-IN')}`]);
-    summaryRows.push(['Total Fines Collected (Current Month)', `Rs. ${summary.fines.toLocaleString('en-IN')}`]);
+    summaryRows.push([`Total Deposits (${currentPeriodLabel})`, `Rs. ${summary.deposits.toLocaleString('en-IN')}`]);
+    summaryRows.push([`Total Loans Issued (${currentPeriodLabel})`, `Rs. ${summary.loans.toLocaleString('en-IN')}`]);
+    summaryRows.push([`Total Principal Repaid (${currentPeriodLabel})`, `Rs. ${summary.principal.toLocaleString('en-IN')}`]);
+    summaryRows.push([`Total Interest Earned (${currentPeriodLabel})`, `Rs. ${summary.interest.toLocaleString('en-IN')}`]);
+    summaryRows.push([`Total Fines Collected (${currentPeriodLabel})`, `Rs. ${summary.fines.toLocaleString('en-IN')}`]);
     if (period === 'monthly') {
       summaryRows.push(['Net Balance for Period', `Rs. ${summary.net.toLocaleString('en-IN')}`]);
       summaryRows.push(['Closing Balance', `Rs. ${closingBalance.toLocaleString('en-IN')}`]);
