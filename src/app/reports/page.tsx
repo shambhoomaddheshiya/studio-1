@@ -107,12 +107,17 @@ export default function ReportsPage() {
             return acc;
           }, 0);
 
+          // Combined accumulated total (Deposits + Interest + Fines) up to monthEnd
           accumulatedDeposits = allTransactions.reduce((acc, tx) => {
-            if (tx.transactionType !== 'Deposit' || !tx.transactionDate) return acc;
+            if (!tx.transactionDate) return acc;
             const d = new Date(tx.transactionDate);
             if (d > monthEnd) return acc;
             if (scope === 'specific' && selectedMemberId && tx.memberId !== selectedMemberId) return acc;
-            return acc + (tx.amount || 0);
+            
+            if (['Deposit', 'InterestPayment', 'FinePayment'].includes(tx.transactionType)) {
+              return acc + (tx.amount || 0);
+            }
+            return acc;
           }, 0);
         }
 
