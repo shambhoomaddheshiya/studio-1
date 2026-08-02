@@ -126,10 +126,8 @@ export default function Dashboard() {
       s.memberInactive = members.filter(m => m.status === 'Inactive').length;
     }
 
+    // Net Capital Position Calculation
     const totalAggregatedDeposits = s.baseDeposits + s.interest + s.fines;
-    
-    // MATHEMATICALLY CORRECT REMAINING FUND:
-    // Cash on hand = Total Collected (Deposits + Int + Fines) - What is currently out (Outstanding) - What was spent (Expenses)
     const remaining = totalAggregatedDeposits - s.outstanding - s.expenses;
 
     return {
@@ -161,6 +159,8 @@ export default function Dashboard() {
       loans: 0,
       interest: 0,
       principalRecovered: 0,
+      fines: 0,
+      expenses: 0,
       closingBalance: 0
     };
 
@@ -169,9 +169,11 @@ export default function Dashboard() {
       const t = tx.transactionType;
 
       if (t === 'Deposit') s.deposits += amt;
-      if (t === 'LoanDisbursement') s.loans += amt;
-      if (t === 'InterestPayment') s.interest += amt;
-      if (t === 'PrincipalRepayment') s.principalRecovered += amt;
+      else if (t === 'LoanDisbursement') s.loans += amt;
+      else if (t === 'InterestPayment') s.interest += amt;
+      else if (t === 'PrincipalRepayment') s.principalRecovered += amt;
+      else if (t === 'FinePayment') s.fines += amt;
+      else if (t === 'GeneralExpense') s.expenses += amt;
     });
 
     if (allTransactions) {
@@ -191,6 +193,9 @@ export default function Dashboard() {
 
     return s;
   }, [filteredTransactions, allTransactions, dateFilterType, viewMonth, viewYear]);
+
+  // Derived Net Position for the filtered period
+  const monthlyNet = (overviewStats.deposits + overviewStats.interest + overviewStats.principalRecovered + overviewStats.fines) - (overviewStats.loans + overviewStats.expenses);
 
   if (isUserLoading || txLoading) {
     return (
@@ -259,12 +264,12 @@ export default function Dashboard() {
           <StatCard 
             title="Total Remaining Fund" 
             value={`₹${Math.abs(globalStats.remaining).toLocaleString()}`}
-            description="Global cash available"
+            description="Net Capital Position"
           />
           <StatCard 
             title="Total Deposits" 
             value={`₹${Math.abs(globalStats.totalAggregatedDeposits).toLocaleString()}`}
-            description="Global collections (incl. interest & fines)"
+            description="Global collections (incl. int. & fines)"
           />
           <StatCard 
             title="Outstanding Loan" 
@@ -345,8 +350,22 @@ export default function Dashboard() {
                 <span className="text-slate-600 font-medium">Principal Recovered</span>
                 <span className="font-bold">₹{overviewStats.principalRecovered.toLocaleString()}</span>
               </div>
+              <div className="flex justify-between items-center text-sm border-b pb-2">
+                <span className="text-slate-600 font-medium">Fine Payment</span>
+                <span className="font-bold">₹{overviewStats.fines.toLocaleString()}</span>
+              </div>
               
-              <div className="flex justify-between items-center text-sm pt-4 border-t border-dashed mt-2 bg-blue-50/50 p-2 rounded-md">
+              <div className="flex justify-between items-center text-sm pt-4 border-t border-dashed mt-2 p-2 rounded-md bg-slate-50/50">
+                <span className="text-slate-500 font-bold uppercase text-[10px]">Net Monthly Position</span>
+                <span className={cn(
+                  "font-bold",
+                  monthlyNet >= 0 ? "text-green-600" : "text-destructive"
+                )}>
+                  {monthlyNet >= 0 ? '+' : ''}₹{monthlyNet.toLocaleString()}
+                </span>
+              </div>
+
+              <div className="flex justify-between items-center text-sm border-t border-dashed mt-2 bg-blue-50/50 p-2 rounded-md">
                 <span className="text-primary font-bold">Closing Balance (Carry-Forward)</span>
                 <div className="text-right">
                   <span className="font-bold text-primary text-base">₹{overviewStats.closingBalance.toLocaleString()}</span>
@@ -360,3 +379,4 @@ export default function Dashboard() {
     </div>
   );
 }
+
