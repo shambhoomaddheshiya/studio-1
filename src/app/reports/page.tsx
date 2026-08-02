@@ -100,6 +100,15 @@ export default function ReportsPage() {
 
         const prevMonthEnd = new Date(reportStart.getTime() - 1);
 
+        const currentMonthLabel = period === 'monthly' ? `${months[reportStart.getMonth()].label} ${reportStart.getFullYear()}` : 
+                                period === 'yearly' ? `${reportStart.getFullYear()}` : 
+                                period === 'all_time' ? 'All Time' : 
+                                `${reportStart.toLocaleDateString()}`;
+                                
+        const prevMonthLabel = period === 'monthly' ? `${months[prevMonthEnd.getMonth()].label} ${prevMonthEnd.getFullYear()}` :
+                              period === 'yearly' ? `${prevMonthEnd.getFullYear()}` :
+                              'Previous';
+
         const calcNetPosition = (date: Date) => {
           const collections = allTransactions.reduce((acc, tx) => {
             if (!tx.transactionDate || new Date(tx.transactionDate) > date) return acc;
@@ -168,9 +177,9 @@ export default function ReportsPage() {
           if (!loan.loanDate || new Date(loan.loanDate) > reportEnd) return acc;
           const repaid = allTransactions
             .filter(tx => 
-              tx.relatedEntityId === loan.id && 
               tx.transactionType === 'PrincipalRepayment' &&
-              new Date(tx.transactionDate || 0) <= reportEnd
+              new Date(tx.transactionDate || 0) <= reportEnd &&
+              (tx.relatedEntityId === loan.id || tx.comment?.includes(loan.id))
             )
             .reduce((total, tx) => total + (tx.amount || 0), 0);
           return acc + Math.max(0, (loan.loanAmount || 0) - repaid);
@@ -178,7 +187,9 @@ export default function ReportsPage() {
 
         if (format === 'pdf') {
           generatePDFReport({
-            reportRange: period === 'all_time' ? 'All Time' : period === 'monthly' ? `${months[reportStart.getMonth()].label} ${reportStart.getFullYear()}` : period === 'yearly' ? `${reportStart.getFullYear()}` : `${reportStart.toLocaleDateString()} to ${reportEnd.toLocaleDateString()}`,
+            reportRange: currentMonthLabel,
+            currentMonthLabel,
+            prevMonthLabel,
             transactionTypeLabel: typeFilters.find(f => f.value === type)?.label || 'All',
             openingBalance,
             periodDeposits: periodMetrics.deposits,
@@ -220,36 +231,34 @@ export default function ReportsPage() {
     const { 
       reportRange, transactionTypeLabel, openingBalance, 
       periodDeposits, periodLoans, periodPrincipal, periodInterest, periodFines, periodExpenses,
-      periodNetBalance, closingBalance, accumulatedDeposits, accumulatedOutstanding, data 
+      periodNetBalance, closingBalance, accumulatedDeposits, accumulatedOutstanding, data,
+      currentMonthLabel, prevMonthLabel
     } = reportData;
 
     doc.setFontSize(22);
-    doc.text(`Yuva Finance 2 - Financial Report`, 14, 20);
+    doc.text(`Group Transactions Report: ${reportRange}`, 14, 20);
     doc.setFontSize(12);
-    doc.text(`Period: ${reportRange}`, 14, 28);
-    doc.setTextColor(100);
-    doc.text(`Type Filter: ${transactionTypeLabel}`, 14, 34);
+    doc.text(`Transaction Type: ${transactionTypeLabel}`, 14, 30);
 
     const summaryRows = [
-      [`Opening Balance (Historical Position)`, `Rs. ${openingBalance.toLocaleString('en-IN')}`],
-      [`Monthly Deposits`, `+ Rs. ${periodDeposits.toLocaleString('en-IN')}`],
-      [`Interest Received`, `+ Rs. ${periodInterest.toLocaleString('en-IN')}`],
-      [`Principal Recovered`, `+ Rs. ${periodPrincipal.toLocaleString('en-IN')}`],
-      [`Fines Collected`, `+ Rs. ${periodFines.toLocaleString('en-IN')}`],
-      [`Loans Disbursed`, `- Rs. ${periodLoans.toLocaleString('en-IN')}`],
-      [`Expenses`, `- Rs. ${periodExpenses.toLocaleString('en-IN')}`],
-      [`Net Period Change`, `Rs. ${periodNetBalance.toLocaleString('en-IN')}`],
-      [{ content: `Closing Net Position (Remaining Fund)`, styles: { fontStyle: 'bold' } }, { content: `Rs. ${closingBalance.toLocaleString('en-IN')}`, styles: { fontStyle: 'bold' } }],
-      [`Total Deposits Accumulated`, `Rs. ${accumulatedDeposits.toLocaleString('en-IN')}`],
-      [`Current Outstanding Loan Pool`, `Rs. ${accumulatedOutstanding.toLocaleString('en-IN')}`]
+      [`Opening Balance (${prevMonthLabel} Closing)`, `Rs. ${openingBalance.toLocaleString('en-IN')}`],
+      [`Total Deposits (${currentMonthLabel})`, `Rs. ${periodDeposits.toLocaleString('en-IN')}`],
+      [`Total Loans Issued (${currentMonthLabel})`, `Rs. ${periodLoans.toLocaleString('en-IN')}`],
+      [`Total Principal Repaid (${currentMonthLabel})`, `Rs. ${periodPrincipal.toLocaleString('en-IN')}`],
+      [`Total Interest Earned (${currentMonthLabel})`, `Rs. ${periodInterest.toLocaleString('en-IN')}`],
+      [`Total Fines Collected (${currentMonthLabel})`, `Rs. ${periodFines.toLocaleString('en-IN')}`],
+      [`Net Balance for Period`, `Rs. ${periodNetBalance.toLocaleString('en-IN')}`],
+      [{ content: `Closing Balance`, styles: { fontStyle: 'bold' } }, { content: `Rs. ${closingBalance.toLocaleString('en-IN')}`, styles: { fontStyle: 'bold' } }],
+      [`Total Deposits accumulated (up to ${currentMonthLabel})`, `Rs. ${accumulatedDeposits.toLocaleString('en-IN')}`],
+      [`Total Outstanding Loan (up to ${currentMonthLabel})`, `Rs. ${accumulatedOutstanding.toLocaleString('en-IN')}`]
     ];
 
     autoTable(doc, {
       startY: 40,
-      head: [['Financial Summary Metrics', 'Amount (INR)']],
+      head: [['Summary Metric', 'Amount (INR)']],
       body: summaryRows,
       theme: 'striped',
-      headStyles: { fillColor: [26, 35, 126], textColor: [255, 255, 255], fontSize: 12 },
+      headStyles: { fillColor: [46, 125, 50], textColor: [255, 255, 255], fontSize: 12 },
       columnStyles: { 1: { halign: 'right' } },
       margin: { top: 40 }
     });
