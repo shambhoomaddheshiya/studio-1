@@ -80,68 +80,107 @@ export default function ReportsPage() {
     
     setTimeout(() => {
       try {
-        const reportEnd = period === "monthly" 
-          ? new Date(parseInt(selectedYear), parseInt(selectedMonth) + 1, 0, 23, 59, 59)
-          : period === "yearly" 
-            ? new Date(parseInt(selectedYear), 11, 31, 23, 59, 59) 
-            : (endDate ? new Date(endDate) : new Date());
+        let reportStart: Date;
+        let reportEnd: Date;
 
+        if (period === "monthly") {
+          reportStart = new Date(parseInt(selectedYear), parseInt(selectedMonth), 1, 0, 0, 0);
+          reportEnd = new Date(parseInt(selectedYear), parseInt(selectedMonth) + 1, 0, 23, 59, 59);
+        } else if (period === "yearly") {
+          reportStart = new Date(parseInt(selectedYear), 0, 1, 0, 0, 0);
+          reportEnd = new Date(parseInt(selectedYear), 11, 31, 23, 59, 59);
+        } else {
+          reportStart = startDate ? new Date(startDate) : new Date(0);
+          reportEnd = endDate ? new Date(endDate) : new Date();
+        }
+
+        const prevMonthEnd = new Date(reportStart.getTime() - 1);
+        const prevMonthLabel = months[prevMonthEnd.getMonth()].label;
+        const prevMonthYear = prevMonthEnd.getFullYear();
+
+        // Transaction filtering for the detailed log
         const filtered = allTransactions.filter(tx => {
           if (scope === "specific" && selectedMemberId && tx.memberId !== selectedMemberId) return false;
-          if (tx.transactionDate) {
-            const txDate = new Date(tx.transactionDate);
-            if (period === "monthly") {
-              if (txDate.getMonth().toString() !== selectedMonth || txDate.getFullYear().toString() !== selectedYear) return false;
-            } else if (period === "yearly") {
-              if (txDate.getFullYear().toString() !== selectedYear) return false;
-            } else if (period === "custom") {
-              if (startDate && txDate < new Date(startDate)) return false;
-              if (endDate && txDate > new Date(endDate)) return false;
-            }
+          if (!tx.transactionDate) return false;
+          const txDate = new Date(tx.transactionDate);
+          if (txDate < reportStart || txDate > reportEnd) return false;
+          
+          if (type !== 'all') {
+            if (type === "deposits" && tx.transactionType !== 'Deposit') return false;
+            if (type === "loans" && tx.transactionType !== 'LoanDisbursement') return false;
           }
-          if (type === "deposits" && tx.transactionType !== 'Deposit') return false;
-          if (type === "loans" && tx.transactionType !== 'LoanDisbursement') return false;
           return true;
         }).sort((a, b) => new Date(a.transactionDate || 0).getTime() - new Date(b.transactionDate || 0).getTime());
 
-        // Global Aggregates up to reportEnd (Source of Truth)
-        const globalMetrics = allTransactions.reduce((acc, tx) => {
-          if (!tx.transactionDate || new Date(tx.transactionDate) > reportEnd) return acc;
-          const amt = tx.amount || 0;
-          if (tx.transactionType === 'Deposit') acc.deposits += amt;
-          if (tx.transactionType === 'InterestPayment') acc.interest += amt;
-          if (tx.transactionType === 'FinePayment') acc.fines += amt;
-          if (tx.transactionType === 'GeneralExpense') acc.expenses += amt;
-          return acc;
-        }, { deposits: 0, interest: 0, fines: 0, expenses: 0 });
+        // Calculation Helpers for Net Capital Position Reconcilliation
+        const calcNetPosition = (date: Date) => {
+          return allTransactions.reduce((acc, tx) => {
+            if (!tx.transactionDate || new Date(tx.transactionDate) > date) return acc;
+            const amt = tx.amount || 0;
+            const type = tx.transactionType;
+            // Net Position = (Deposits + Int + Fines + Principal Repaid) - (Disbursements + Expenses)
+            if (['Deposit', 'InterestPayment', 'FinePayment', 'PrincipalRepayment'].includes(type)) return acc + amt;
+            if (['LoanDisbursement', 'GeneralExpense'].includes(type)) return acc - amt;
+            return acc;
+          }, 0);
+        };
 
-        const globalOutstanding = loans.reduce((acc, loan) => {
+        const openingBalance = calcNetPosition(prevMonthEnd);
+
+        const periodMetrics = filtered.reduce((acc, tx) => {
+          const amt = tx.amount || 0;
+          const t = tx.transactionType;
+          if (t === 'Deposit') acc.deposits += amt;
+          else if (t === 'LoanDisbursement') acc.loans += amt;
+          else if (t === 'PrincipalRepayment') acc.principal += amt;
+          else if (t === 'InterestPayment') acc.interest += amt;
+          else if (t === 'FinePayment') acc.fines += amt;
+          else if (t === 'GeneralExpense') acc.expenses += amt;
+          return acc;
+        }, { deposits: 0, loans: 0, principal: 0, interest: 0, fines: 0, expenses: 0 });
+
+        const periodNetBalance = (periodMetrics.deposits + periodMetrics.interest + periodMetrics.principal + periodMetrics.fines) - (periodMetrics.loans + periodMetrics.expenses);
+        const closingBalance = openingBalance + periodNetBalance;
+
+        const accumulatedDeposits = allTransactions.reduce((acc, tx) => {
+          if (!tx.transactionDate || new Date(tx.transactionDate) > reportEnd || tx.transactionType !== 'Deposit') return acc;
+          return acc + (tx.amount || 0);
+        }, 0);
+
+        const accumulatedOutstanding = loans.reduce((acc, loan) => {
           const lDate = new Date(loan.loanDate || 0);
           if (lDate > reportEnd) return acc;
           
-          // Historical principal recovery
-          const principalRepaid = allTransactions
+          const repaid = allTransactions
             .filter(tx => 
               tx.relatedEntityId === loan.id && 
               tx.transactionType === 'PrincipalRepayment' &&
               new Date(tx.transactionDate || 0) <= reportEnd
             )
             .reduce((total, tx) => total + (tx.amount || 0), 0);
-
-          const balance = Math.max(0, (loan.loanAmount || 0) - principalRepaid);
-          return acc + balance;
+          
+          return acc + Math.max(0, (loan.loanAmount || 0) - repaid);
         }, 0);
-
-        const totalLoansDisbursed = loans.reduce((acc, loan) => {
-          const lDate = new Date(loan.loanDate || 0);
-          if (lDate <= reportEnd) return acc + (loan.loanAmount || 0);
-          return acc;
-        }, 0);
-
-        const netPosition = (globalMetrics.deposits + globalMetrics.interest + globalMetrics.fines) - globalOutstanding - globalMetrics.expenses;
 
         if (format === 'pdf') {
-          generatePDFReport(filtered, totalLoansDisbursed, globalOutstanding, globalMetrics, netPosition, reportEnd);
+          generatePDFReport({
+            reportMonth: months[reportStart.getMonth()].label,
+            reportYear: reportStart.getFullYear(),
+            prevMonthName: prevMonthLabel,
+            prevMonthYear: prevMonthYear,
+            transactionTypeLabel: type === 'all' ? 'All' : type === 'deposits' ? 'Deposits Only' : 'Loans Only',
+            openingBalance,
+            periodDeposits: periodMetrics.deposits,
+            periodLoans: periodMetrics.loans,
+            periodPrincipal: periodMetrics.principal,
+            periodInterest: periodMetrics.interest,
+            periodFines: periodMetrics.fines,
+            periodNetBalance,
+            closingBalance,
+            accumulatedDeposits,
+            accumulatedOutstanding,
+            data: filtered
+          });
         } else {
           generateCSVReport(filtered);
         }
@@ -156,37 +195,50 @@ export default function ReportsPage() {
     }, 800);
   };
 
-  const generatePDFReport = (data: any[], totalLoans: number, outstanding: number, metrics: any, netPos: number, reportEnd: Date) => {
+  const generatePDFReport = (reportData: any) => {
     const doc = new jsPDF();
-    const monthName = period === 'monthly' ? months.find(m => m.value === selectedMonth)?.label : '';
-    const reportTitle = `Yuva Finance 2 - Group Report: ${monthName || 'Period'} ${selectedYear}`;
+    const { 
+      reportMonth, reportYear, prevMonthName, prevMonthYear, transactionTypeLabel,
+      openingBalance, periodDeposits, periodLoans, periodPrincipal, periodInterest, periodFines,
+      periodNetBalance, closingBalance, accumulatedDeposits, accumulatedOutstanding, data 
+    } = reportData;
 
-    doc.setFontSize(16);
-    doc.text(reportTitle, 14, 20);
+    doc.setFontSize(22);
+    doc.text(`Group Transactions Report: ${reportMonth} ${reportYear}`, 14, 20);
+
+    doc.setFontSize(11);
+    doc.setTextColor(100);
+    doc.text(`Transaction Type: ${transactionTypeLabel}`, 14, 28);
 
     const summaryRows = [
-      [`Total Collected Deposits`, `Rs. ${metrics.deposits.toLocaleString('en-IN')}`],
-      [`Total Interest Earned`, `Rs. ${metrics.interest.toLocaleString('en-IN')}`],
-      [`Total Fines Collected`, `Rs. ${metrics.fines.toLocaleString('en-IN')}`],
-      [`Total Loans Disbursed (Registry)`, `Rs. ${totalLoans.toLocaleString('en-IN')}`],
-      [`Total Outstanding Principal`, `Rs. ${outstanding.toLocaleString('en-IN')}`],
-      [`Total Accumulated Expenses`, `Rs. ${metrics.expenses.toLocaleString('en-IN')}`],
-      [`Net Capital Position (Remaining Fund)`, `Rs. ${netPos.toLocaleString('en-IN')}`]
+      [`Opening Balance (${prevMonthName} ${prevMonthYear} Closing)`, `Rs. ${openingBalance.toLocaleString('en-IN')}`],
+      [`Total Deposits (${reportMonth} ${reportYear})`, `Rs. ${periodDeposits.toLocaleString('en-IN')}`],
+      [`Total Loans Issued (${reportMonth} ${reportYear})`, `Rs. ${periodLoans.toLocaleString('en-IN')}`],
+      [`Total Principal Repaid (${reportMonth} ${reportYear})`, `Rs. ${periodPrincipal.toLocaleString('en-IN')}`],
+      [`Total Interest Earned (${reportMonth} ${reportYear})`, `Rs. ${periodInterest.toLocaleString('en-IN')}`],
+      [`Total Fines Collected (${reportMonth} ${reportYear})`, `Rs. ${periodFines.toLocaleString('en-IN')}`],
+      [`Net Balance for Period`, `Rs. ${periodNetBalance.toLocaleString('en-IN')}`],
+      [{ content: `Closing Balance`, styles: { fontStyle: 'bold' } }, { content: `Rs. ${closingBalance.toLocaleString('en-IN')}`, styles: { fontStyle: 'bold' } }],
+      [`Total Deposits accumulated (up to ${reportMonth} ${reportYear})`, `Rs. ${accumulatedDeposits.toLocaleString('en-IN')}`],
+      [`Total Outstanding Loan (up to ${reportMonth} ${reportYear})`, `Rs. ${accumulatedOutstanding.toLocaleString('en-IN')}`]
     ];
 
     autoTable(doc, {
-      startY: 30,
-      head: [['Global Summary Metric', 'Amount (INR)']],
+      startY: 35,
+      head: [['Summary Metric', 'Amount (INR)']],
       body: summaryRows,
       theme: 'striped',
-      headStyles: { fillColor: [26, 31, 54] },
-      columnStyles: { 1: { halign: 'right', fontStyle: 'bold' } }
+      headStyles: { fillColor: [46, 125, 50], textColor: [255, 255, 255], fontSize: 12 },
+      columnStyles: { 1: { halign: 'right' } },
+      margin: { top: 35 }
     });
 
-    doc.setFontSize(12);
-    doc.text("Period Transaction Activity:", 14, (doc as any).lastAutoTable.finalY + 15);
+    const finalY = (doc as any).lastAutoTable.finalY;
+    doc.setTextColor(0);
+    doc.setFontSize(14);
+    doc.text("Detailed Transaction Log:", 14, finalY + 15);
 
-    const tableData = data.map(tx => [
+    const tableData = data.map((tx: any) => [
       new Date(tx.transactionDate || 0).toLocaleDateString(),
       tx.memberName || 'N/A',
       tx.transactionType.replace(/([A-Z])/g, ' $1').trim(),
@@ -195,15 +247,15 @@ export default function ReportsPage() {
     ]);
 
     autoTable(doc, {
-      startY: (doc as any).lastAutoTable.finalY + 20,
+      startY: finalY + 20,
       head: [['Date', 'Member', 'Type', 'Description', 'Amount']],
       body: tableData,
       theme: 'grid',
-      headStyles: { fillColor: [63, 81, 181] },
+      headStyles: { fillColor: [33, 150, 243], fontSize: 10 },
       columnStyles: { 4: { halign: 'right' } }
     });
 
-    doc.save(`Financial_Report_${new Date().toISOString().split('T')[0]}.pdf`);
+    doc.save(`Financial_Report_${reportMonth}_${reportYear}.pdf`);
   };
 
   const generateCSVReport = (data: any[]) => {
