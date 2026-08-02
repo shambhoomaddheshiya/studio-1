@@ -19,7 +19,7 @@ import { collection, getDocs } from "firebase/firestore";
 import { useToast } from "@/hooks/use-toast";
 import { Loader2 } from "lucide-react";
 import { Input } from "@/components/ui/input";
-import { jsPDF } from "jspdf";
+import { jsPDF } from "jsPDF";
 import autoTable from "jspdf-autotable";
 
 const months = [
@@ -262,12 +262,12 @@ export default function ReportsPage() {
     doc.text(`Group Transactions Report: ${reportRange}`, 14, 20);
 
     const summaryRows = [
-      [`Total Deposits (this period)`, `Rs. ${periodDeposits.toLocaleString('en-IN')}`],
-      [`Total Loans Issued (this period)`, `Rs. ${periodLoans.toLocaleString('en-IN')}`],
-      [`Total Principal Repaid (this period)`, `Rs. ${periodPrincipal.toLocaleString('en-IN')}`],
-      [`Total Interest Earned (this period)`, `Rs. ${periodInterest.toLocaleString('en-IN')}`],
-      [`Total Fines Collected (this period)`, `Rs. ${periodFines.toLocaleString('en-IN')}`],
-      [`Total Expenses (this period)`, `Rs. ${periodExpenses.toLocaleString('en-IN')}`],
+      [`Total Deposits`, `Rs. ${periodDeposits.toLocaleString('en-IN')}`],
+      [`Total Loans Issued`, `Rs. ${periodLoans.toLocaleString('en-IN')}`],
+      [`Total Principal Repaid`, `Rs. ${periodPrincipal.toLocaleString('en-IN')}`],
+      [`Total Interest Earned`, `Rs. ${periodInterest.toLocaleString('en-IN')}`],
+      [`Total Fines Collected`, `Rs. ${periodFines.toLocaleString('en-IN')}`],
+      [`Total Expenses`, `Rs. ${periodExpenses.toLocaleString('en-IN')}`],
       [{ content: `Total Remaining Fund (Net Position)`, styles: { fontStyle: 'bold' } }, { content: `Rs. ${closingBalance.toLocaleString('en-IN')}`, styles: { fontStyle: 'bold' } }],
       [`Total Deposits`, `Rs. ${totalDeposits.toLocaleString('en-IN')}`],
       [`Total Outstanding Loan`, `Rs. ${totalOutstanding.toLocaleString('en-IN')}`]
