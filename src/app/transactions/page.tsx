@@ -114,7 +114,13 @@ export default function TransactionsPage() {
     return query(collection(db, 'transactions'), orderBy('transactionDate', 'desc'));
   }, [db, user]);
 
+  const loansRef = useMemoFirebase(() => {
+    if (!db || !user) return null;
+    return collection(db, 'loans');
+  }, [db, user]);
+
   const { data: rawTransactions, isLoading } = useCollection(txRef);
+  const { data: rawLoans } = useCollection(loansRef);
 
   const availableYears = React.useMemo(() => {
     if (!rawTransactions) return [];
@@ -163,10 +169,6 @@ export default function TransactionsPage() {
       }
 
       return true;
-    }).sort((a, b) => {
-      const dateA = new Date(a.transactionDate || 0).getTime();
-      const dateB = new Date(b.transactionDate || 0).getTime();
-      return dateB - dateA;
     });
   }, [rawTransactions, searchTerm, typeFilter, dateFilterType, viewMonth, viewYear]);
 
@@ -187,29 +189,43 @@ export default function TransactionsPage() {
       const impact = tx.balanceImpact;
 
       if (t === 'Deposit') s.deposits += amt;
-      if (t === 'LoanDisbursement') s.loans += amt;
       if (t === 'PrincipalRepayment') s.repayments += amt;
       if (t === 'FinePayment') s.fines += amt;
       if (t === 'GeneralExpense') s.expenses += amt;
 
       if (impact === 'Credit') s.remaining += amt;
-      else s.remaining -= amt;
+      else if (t !== 'LoanDisbursement') s.remaining -= amt; // Loan recovery logic handle separately
     });
 
-    if (rawTransactions) {
-      let totalDep = 0;
-      let totalInt = 0;
-      let totalFin = 0;
-      rawTransactions.forEach(tx => {
-        if (tx.transactionType === 'Deposit') totalDep += (tx.amount || 0);
-        if (tx.transactionType === 'InterestPayment') totalInt += (tx.amount || 0);
-        if (tx.transactionType === 'FinePayment') totalFin += (tx.amount || 0);
+    // Loans source of truth: registry
+    if (rawLoans) {
+      rawLoans.forEach(loan => {
+        const d = new Date(loan.loanDate || 0);
+        let inView = true;
+        if (dateFilterType === 'monthly') {
+          if (d.getMonth().toString() !== viewMonth || d.getFullYear().toString() !== viewYear) inView = false;
+        } else if (dateFilterType === 'yearly') {
+          if (d.getFullYear().toString() !== viewYear) inView = false;
+        }
+
+        if (inView) {
+          s.loans += (loan.loanAmount || 0);
+        }
       });
-      s.allTimeAggregatedDeposits = totalDep + totalInt + totalFin;
+
+      const totalAggregated = rawTransactions?.reduce((acc, tx) => {
+        const t = tx.transactionType;
+        if (['Deposit', 'InterestPayment', 'FinePayment'].includes(t)) return acc + (tx.amount || 0);
+        return acc;
+      }, 0) || 0;
+
+      const currentOutstanding = rawLoans.reduce((acc, l) => acc + (l.outstandingPrincipal || 0), 0);
+      s.allTimeAggregatedDeposits = totalAggregated;
+      s.remaining = totalAggregated - currentOutstanding; // Simplified Net Position
     }
 
     return s;
-  }, [transactions, rawTransactions]);
+  }, [transactions, rawTransactions, rawLoans, dateFilterType, viewMonth, viewYear]);
 
   const handleDelete = async () => {
     if (txToDelete && db) {
@@ -312,13 +328,13 @@ export default function TransactionsPage() {
           <StatCard title="Deposits" value={`₹${Math.abs(stats.deposits).toLocaleString()}`} />
           <StatCard title="Repayments" value={`₹${Math.abs(stats.repayments).toLocaleString()}`} />
           <StatCard title="Fines" value={`₹${Math.abs(stats.fines).toLocaleString()}`} />
-          <StatCard title="Loans" value={`₹${Math.abs(stats.loans).toLocaleString()}`} />
+          <StatCard title="Loans" value={`₹${Math.abs(stats.loans).toLocaleString()}`} className="text-destructive" />
           <StatCard title="Expenses" value={`₹${Math.abs(stats.expenses).toLocaleString()}`} />
-          <StatCard title="Remaining" value={`₹${Math.abs(stats.remaining).toLocaleString()}`} />
+          <StatCard title="Net Capital" value={`₹${Math.abs(stats.remaining).toLocaleString()}`} />
           <StatCard 
             title="Total Coll." 
             value={`₹${Math.abs(stats.allTimeAggregatedDeposits).toLocaleString()}`} 
-            description="Incl. int. & fines" 
+            description="All Time Collections" 
           />
         </div>
 

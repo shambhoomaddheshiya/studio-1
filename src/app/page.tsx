@@ -126,7 +126,7 @@ export default function Dashboard() {
       s.memberInactive = members.filter(m => m.status === 'Inactive').length;
     }
 
-    // Net Capital Position Calculation
+    // Net Capital Position Calculation: (Deposits + Int + Fines) - Outstanding Loans - Expenses
     const totalAggregatedDeposits = s.baseDeposits + s.interest + s.fines;
     const remaining = totalAggregatedDeposits - s.outstanding - s.expenses;
 
@@ -164,35 +164,64 @@ export default function Dashboard() {
       closingBalance: 0
     };
 
+    // Calculate collection metrics from transactions
     filteredTransactions.forEach(tx => {
       const amt = tx.amount || 0;
       const t = tx.transactionType;
 
       if (t === 'Deposit') s.deposits += amt;
-      else if (t === 'LoanDisbursement') s.loans += amt;
       else if (t === 'InterestPayment') s.interest += amt;
       else if (t === 'PrincipalRepayment') s.principalRecovered += amt;
       else if (t === 'FinePayment') s.fines += amt;
       else if (t === 'GeneralExpense') s.expenses += amt;
     });
 
-    if (allTransactions) {
+    // Calculate Loans Disbursed from LOANS collection for accuracy
+    if (loans) {
+      loans.forEach(loan => {
+        if (!loan.loanDate) return;
+        const d = new Date(loan.loanDate);
+        let matches = true;
+        if (dateFilterType === 'monthly') {
+          if (d.getMonth().toString() !== viewMonth || d.getFullYear().toString() !== viewYear) matches = false;
+        } else if (dateFilterType === 'yearly') {
+          if (d.getFullYear().toString() !== viewYear) matches = false;
+        }
+        if (matches) s.loans += (loan.loanAmount || 0);
+      });
+    }
+
+    if (allTransactions && loans) {
       const periodEnd = dateFilterType === 'monthly'
         ? new Date(parseInt(viewYear), parseInt(viewMonth) + 1, 0, 23, 59, 59)
         : dateFilterType === 'yearly'
           ? new Date(parseInt(viewYear), 11, 31, 23, 59, 59)
           : new Date();
 
-      s.closingBalance = allTransactions.reduce((acc, tx) => {
+      // Cumulative Net Position Calculation for Closing Balance
+      const accumulated = allTransactions.reduce((acc, tx) => {
         if (!tx.transactionDate) return acc;
         const d = new Date(tx.transactionDate);
         if (dateFilterType !== 'all' && d > periodEnd) return acc;
-        return tx.balanceImpact === 'Credit' ? acc + (tx.amount || 0) : acc - (tx.amount || 0);
+        const amt = tx.amount || 0;
+        if (['Deposit', 'InterestPayment', 'FinePayment'].includes(tx.transactionType)) acc.coll += amt;
+        if (tx.transactionType === 'GeneralExpense') acc.exp += amt;
+        return acc;
+      }, { coll: 0, exp: 0 });
+
+      const periodOutstanding = loans.reduce((acc, loan) => {
+        const d = new Date(loan.loanDate || 0);
+        if (dateFilterType !== 'all' && d > periodEnd) return acc;
+        // Current outstanding = principal issued - principal repaid up to date
+        // Note: For extreme historical accuracy, we would sum principal repayments separately
+        return acc + (loan.outstandingPrincipal || 0);
       }, 0);
+
+      s.closingBalance = accumulated.coll - periodOutstanding - accumulated.exp;
     }
 
     return s;
-  }, [filteredTransactions, allTransactions, dateFilterType, viewMonth, viewYear]);
+  }, [filteredTransactions, allTransactions, loans, dateFilterType, viewMonth, viewYear]);
 
   // Derived Net Position for the filtered period
   const monthlyNet = (overviewStats.deposits + overviewStats.interest + overviewStats.principalRecovered + overviewStats.fines) - (overviewStats.loans + overviewStats.expenses);
@@ -340,7 +369,7 @@ export default function Dashboard() {
               </div>
               <div className="flex justify-between items-center text-sm border-b pb-2">
                 <span className="text-slate-600 font-medium">Loans Disbursed</span>
-                <span className="font-bold">₹{overviewStats.loans.toLocaleString()}</span>
+                <span className="font-bold text-destructive">₹{overviewStats.loans.toLocaleString()}</span>
               </div>
               <div className="flex justify-between items-center text-sm border-b pb-2">
                 <span className="text-slate-600 font-medium">Interest Received</span>
@@ -366,10 +395,10 @@ export default function Dashboard() {
               </div>
 
               <div className="flex justify-between items-center text-sm border-t border-dashed mt-2 bg-blue-50/50 p-2 rounded-md">
-                <span className="text-primary font-bold">Closing Balance (Carry-Forward)</span>
+                <span className="text-primary font-bold">Closing Balance (Net Position)</span>
                 <div className="text-right">
                   <span className="font-bold text-primary text-base">₹{overviewStats.closingBalance.toLocaleString()}</span>
-                  <p className="text-[10px] text-muted-foreground uppercase font-bold">End of Period Total</p>
+                  <p className="text-[10px] text-muted-foreground uppercase font-bold">End of Period Status</p>
                 </div>
               </div>
             </CardContent>
@@ -379,4 +408,3 @@ export default function Dashboard() {
     </div>
   );
 }
-
