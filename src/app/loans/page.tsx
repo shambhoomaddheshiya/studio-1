@@ -54,6 +54,7 @@ import {
 } from "@/components/ui/select";
 import { deleteDocumentNonBlocking, updateDocumentNonBlocking } from "@/firebase/non-blocking-updates";
 import { useToast } from "@/hooks/use-toast";
+import { StatCard } from "@/components/dashboard/StatCard";
 
 export default function LoansPage() {
   const db = useFirestore();
@@ -104,47 +105,45 @@ export default function LoansPage() {
     });
   }, [rawLoans, members, searchTerm, statusFilter, memberIdFilter]);
 
+  const filteredStats = React.useMemo(() => {
+    return loans.reduce((acc, loan) => {
+      acc.principal += (loan.loanAmount || 0);
+      acc.outstanding += ((loan.outstandingPrincipal || 0) + (loan.outstandingInterest || 0));
+      return acc;
+    }, { principal: 0, outstanding: 0 });
+  }, [loans]);
+
   const handleDelete = async () => {
     if (loanToDelete && db) {
       const loanId = loanToDelete.id;
       const loanAmount = loanToDelete.loanAmount;
       const memberId = loanToDelete.memberId;
       
-      // 1. Delete the primary loan record
       deleteDocumentNonBlocking(doc(db, 'loans', loanId));
 
-      // 2. DEEP CASCADE: Find and delete all related ledger entries and repayment records
       try {
         const txCol = collection(db, 'transactions');
         const repaymentsCol = collection(db, 'repaymentEntries');
         
-        // Step A: Find transactions directly linked to this loan
         const qTx = query(txCol, where('relatedEntityId', '==', loanId));
         const snapshotTx = await getDocs(qTx);
         snapshotTx.forEach((docSnap) => {
           deleteDocumentNonBlocking(docSnap.ref);
         });
 
-        // Step B: Find all Repayment Entries for this specific loan
         const qRepayments = query(repaymentsCol, where('loanId', '==', loanId));
         const snapshotRepayments = await getDocs(qRepayments);
         
         for (const repaymentDoc of snapshotRepayments.docs) {
           const rId = repaymentDoc.id;
-          
-          // Find and delete transactions linked to this repayment
           const qRTx = query(txCol, where('relatedEntityId', '==', rId));
           const snapshotRTx = await getDocs(qRTx);
           snapshotRTx.forEach((docSnap) => {
             deleteDocumentNonBlocking(docSnap.ref);
           });
-          
-          // Delete the repayment entry itself
           deleteDocumentNonBlocking(repaymentDoc.ref);
         }
 
-        // Step C: HEURISTIC FALLBACK (Safety Delete for "Ghost" Transactions)
-        // If the disbursement transaction wasn't found by ID (old/broken data), search by amount and member
         const qFallback = query(
           txCol, 
           where('transactionType', '==', 'LoanDisbursement'),
@@ -180,7 +179,6 @@ export default function LoansPage() {
     const comment = formData.get('comment') as string;
     const isoDate = new Date(date).toISOString();
 
-    // 1. Update the Loan Record
     const docRef = doc(db, 'loans', loanToEdit.id);
     updateDocumentNonBlocking(docRef, {
       loanAmount: amount,
@@ -191,7 +189,6 @@ export default function LoansPage() {
       updatedAt: new Date().toISOString()
     });
 
-    // 2. SYNC LEDGER: Update the linked LoanDisbursement transaction
     try {
       const txCol = collection(db, 'transactions');
       const q = query(txCol, where('relatedEntityId', '==', loanToEdit.id), where('transactionType', '==', 'LoanDisbursement'));
@@ -242,6 +239,17 @@ export default function LoansPage() {
             </Link>
           </Button>
         </header>
+
+        <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
+          <StatCard 
+            title="Total Principal (Current View)" 
+            value={`₹${filteredStats.principal.toLocaleString()}`}
+          />
+          <StatCard 
+            title="Total Outstanding (Current View)" 
+            value={`₹${filteredStats.outstanding.toLocaleString()}`}
+          />
+        </div>
 
         <Card className="border-none shadow-sm overflow-hidden">
           <div className="p-4 border-b flex flex-col md:flex-row gap-4 items-center justify-between bg-white">
