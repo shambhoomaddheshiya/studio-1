@@ -83,6 +83,7 @@ const typeFilters = [
   { value: "loans", label: "Loans" },
   { value: "interest", label: "Interest" },
   { value: "repayments", label: "Repayments" },
+  { value: "fines", label: "Fines" },
   { value: "expenses", label: "Expenses" },
   { value: "waived", label: "Loan Waived" },
 ];
@@ -146,7 +147,8 @@ export default function TransactionsPage() {
         if (typeFilter === 'deposits' && t !== 'Deposit') return false;
         if (typeFilter === 'loans' && t !== 'LoanDisbursement') return false;
         if (typeFilter === 'interest' && t !== 'InterestPayment') return false;
-        if (typeFilter === 'repayments' && !['PrincipalRepayment', 'FinePayment'].includes(t)) return false;
+        if (typeFilter === 'repayments' && t !== 'PrincipalRepayment') return false;
+        if (typeFilter === 'fines' && t !== 'FinePayment') return false;
         if (typeFilter === 'expenses' && t !== 'GeneralExpense') return false;
         if (typeFilter === 'waived' && t !== 'LoanWaived') return false;
       }
@@ -173,6 +175,7 @@ export default function TransactionsPage() {
       deposits: 0,
       loans: 0,
       repayments: 0,
+      fines: 0,
       expenses: 0,
       remaining: 0,
       allTimeAggregatedDeposits: 0
@@ -185,7 +188,8 @@ export default function TransactionsPage() {
 
       if (t === 'Deposit') s.deposits += amt;
       if (t === 'LoanDisbursement') s.loans += amt;
-      if (['PrincipalRepayment', 'FinePayment'].includes(t)) s.repayments += amt;
+      if (t === 'PrincipalRepayment') s.repayments += amt;
+      if (t === 'FinePayment') s.fines += amt;
       if (t === 'GeneralExpense') s.expenses += amt;
 
       if (impact === 'Credit') s.remaining += amt;
@@ -304,16 +308,17 @@ export default function TransactionsPage() {
           </div>
         </header>
 
-        <div className="grid gap-4 md:grid-cols-3 lg:grid-cols-6">
+        <div className="grid gap-4 grid-cols-2 md:grid-cols-4 lg:grid-cols-7">
           <StatCard title="Deposits" value={`₹${Math.abs(stats.deposits).toLocaleString()}`} />
           <StatCard title="Repayments" value={`₹${Math.abs(stats.repayments).toLocaleString()}`} />
+          <StatCard title="Fines" value={`₹${Math.abs(stats.fines).toLocaleString()}`} />
           <StatCard title="Loans" value={`₹${Math.abs(stats.loans).toLocaleString()}`} />
           <StatCard title="Expenses" value={`₹${Math.abs(stats.expenses).toLocaleString()}`} />
-          <StatCard title="Remaining Fund" value={`₹${Math.abs(stats.remaining).toLocaleString()}`} />
+          <StatCard title="Remaining" value={`₹${Math.abs(stats.remaining).toLocaleString()}`} />
           <StatCard 
-            title="Total Deposits" 
+            title="Total Coll." 
             value={`₹${Math.abs(stats.allTimeAggregatedDeposits).toLocaleString()}`} 
-            description="Incl. interest & fines" 
+            description="Incl. int. & fines" 
           />
         </div>
 
@@ -385,7 +390,7 @@ export default function TransactionsPage() {
                   key={filter.value}
                   variant={typeFilter === filter.value ? "default" : "outline"} 
                   className={cn(
-                    "cursor-pointer hover:bg-muted py-1.5 px-4 transition-all whitespace-nowrap",
+                    "cursor-pointer hover:bg-muted py-1.5 px-4 transition-all whitespace-nowrap rounded-full",
                     typeFilter === filter.value ? "bg-[#3f51b5] hover:bg-[#303f9f]" : ""
                   )}
                   onClick={() => setTypeFilter(filter.value)}
@@ -437,6 +442,7 @@ export default function TransactionsPage() {
                         <Badge variant={
                           tx.transactionType === 'Deposit' ? 'secondary' : 
                           tx.transactionType === 'LoanDisbursement' ? 'destructive' : 
+                          tx.transactionType === 'FinePayment' ? 'default' :
                           'outline'
                         } className="capitalize">
                           {(tx.transactionType || '').replace(/([A-Z])/g, ' $1').trim()}
@@ -579,4 +585,3 @@ export default function TransactionsPage() {
     </div>
   );
 }
-
