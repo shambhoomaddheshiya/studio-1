@@ -17,8 +17,7 @@ import {
   Scale,
   CircleCheck,
   CircleX,
-  User,
-  ArrowRight
+  AlertCircle
 } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { 
@@ -28,17 +27,6 @@ import {
   SelectTrigger, 
   SelectValue 
 } from "@/components/ui/select";
-import { 
-  Table, 
-  TableBody, 
-  TableCell, 
-  TableHead, 
-  TableHeader, 
-  TableRow 
-} from "@/components/ui/table";
-import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
-import Link from "next/link";
 import { useFirestore, useCollection, useMemoFirebase, useUser } from "@/firebase";
 import { collection } from "firebase/firestore";
 import { cn } from "@/lib/utils";
@@ -112,6 +100,7 @@ export default function Dashboard() {
       deposits: 0,
       loans: 0,
       interest: 0,
+      fines: 0,
       remaining: 0,
       outstanding: 0,
       memberActive: 0,
@@ -127,6 +116,7 @@ export default function Dashboard() {
         if (t === 'Deposit') s.deposits += amt;
         if (t === 'LoanDisbursement') s.loans += amt;
         if (t === 'InterestPayment') s.interest += amt;
+        if (t === 'FinePayment') s.fines += amt;
 
         if (impact === 'Credit') s.remaining += amt;
         else s.remaining -= amt;
@@ -273,7 +263,7 @@ export default function Dashboard() {
         </header>
 
         {/* Top Summary Row - Displays GLOBAL ALL-TIME Data */}
-        <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-4">
+        <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-5">
           <StatCard 
             title="Total Remaining Fund" 
             value={`₹${Math.abs(globalStats.remaining).toLocaleString()}`}
@@ -301,6 +291,13 @@ export default function Dashboard() {
             icon={Scroll}
             iconClassName="bg-indigo-50 text-[#3f51b5]"
             description="Global interest income"
+          />
+          <StatCard 
+            title="Total Fines Collected" 
+            value={`₹${Math.abs(globalStats.fines).toLocaleString()}`}
+            icon={AlertCircle}
+            iconClassName="bg-orange-50 text-orange-600"
+            description="Global fine income"
           />
         </div>
 
