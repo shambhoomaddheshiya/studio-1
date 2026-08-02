@@ -57,6 +57,7 @@ import {
   SelectTrigger, 
   SelectValue 
 } from "@/components/ui/select";
+import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { deleteDocumentNonBlocking, updateDocumentNonBlocking } from "@/firebase/non-blocking-updates";
 import { useToast } from "@/hooks/use-toast";
 import { StatCard } from "@/components/dashboard/StatCard";
@@ -131,7 +132,6 @@ export default function TransactionsPage() {
     if (!rawTransactions) return [];
     
     return rawTransactions.filter(tx => {
-      // 1. Search Filter
       if (searchTerm) {
         const lowerSearch = searchTerm.toLowerCase();
         const matches = (tx.memberName || "").toLowerCase().includes(lowerSearch) ||
@@ -141,7 +141,6 @@ export default function TransactionsPage() {
         if (!matches) return false;
       }
 
-      // 2. Type Filter
       if (typeFilter !== 'all') {
         const t = tx.transactionType;
         if (typeFilter === 'deposits' && t !== 'Deposit') return false;
@@ -152,7 +151,6 @@ export default function TransactionsPage() {
         if (typeFilter === 'waived' && t !== 'LoanWaived') return false;
       }
 
-      // 3. Date Filter
       if (tx.transactionDate) {
         const d = new Date(tx.transactionDate);
         if (dateFilterType === 'monthly') {
@@ -307,99 +305,96 @@ export default function TransactionsPage() {
         </header>
 
         <div className="grid gap-4 md:grid-cols-3 lg:grid-cols-6">
-          <StatCard 
-            title="Deposits" 
-            value={`₹${Math.abs(stats.deposits).toLocaleString()}`}
-          />
-          <StatCard 
-            title="Repayments" 
-            value={`₹${Math.abs(stats.repayments).toLocaleString()}`}
-          />
-          <StatCard 
-            title="Loans" 
-            value={`₹${Math.abs(stats.loans).toLocaleString()}`}
-          />
-          <StatCard 
-            title="Expenses" 
-            value={`₹${Math.abs(stats.expenses).toLocaleString()}`}
-          />
-          <StatCard 
-            title="Remaining Fund" 
-            value={`₹${Math.abs(stats.remaining).toLocaleString()}`}
-          />
+          <StatCard title="Deposits" value={`₹${Math.abs(stats.deposits).toLocaleString()}`} />
+          <StatCard title="Repayments" value={`₹${Math.abs(stats.repayments).toLocaleString()}`} />
+          <StatCard title="Loans" value={`₹${Math.abs(stats.loans).toLocaleString()}`} />
+          <StatCard title="Expenses" value={`₹${Math.abs(stats.expenses).toLocaleString()}`} />
+          <StatCard title="Remaining Fund" value={`₹${Math.abs(stats.remaining).toLocaleString()}`} />
           <StatCard 
             title="Total Deposits" 
-            value={`₹${Math.abs(stats.allTimeAggregatedDeposits).toLocaleString()}`}
-            description="Incl. interest & fines"
+            value={`₹${Math.abs(stats.allTimeAggregatedDeposits).toLocaleString()}`} 
+            description="Incl. interest & fines" 
           />
         </div>
 
         <Card className="border-none shadow-sm overflow-hidden">
-          <div className="p-4 border-b space-y-4 bg-white">
+          <div className="p-6 border-b space-y-6 bg-white">
             <div className="flex flex-col md:flex-row gap-4 items-center justify-between">
               <div className="relative w-full md:max-w-md">
                 <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
                 <Input 
                   placeholder="Search by member, ID or type..." 
-                  className="pl-10" 
+                  className="pl-10 h-10 border-slate-200" 
                   value={searchTerm}
                   onChange={(e) => setSearchTerm(e.target.value)}
                 />
               </div>
-              
-              <div className="flex flex-wrap items-center gap-2 w-full md:w-auto">
-                <Select value={dateFilterType} onValueChange={setDateFilterType}>
-                  <SelectTrigger className="w-[130px] h-9 text-sm">
-                    <SelectValue placeholder="Date Scope" />
+            </div>
+
+            <div className="flex flex-wrap items-center gap-6">
+              <span className="text-sm font-bold text-[#1e293b]">Filter by Date:</span>
+              <RadioGroup
+                value={dateFilterType}
+                onValueChange={setDateFilterType}
+                className="flex items-center gap-6"
+              >
+                {dateFilters.map((f) => (
+                  <div key={f.value} className="flex items-center space-x-2">
+                    <RadioGroupItem 
+                      value={f.value} 
+                      id={`date-${f.value}`} 
+                      className="h-5 w-5 border-[#3f51b5] text-[#3f51b5]" 
+                    />
+                    <Label htmlFor={`date-${f.value}`} className="font-medium text-slate-600 cursor-pointer">
+                      {f.label}
+                    </Label>
+                  </div>
+                ))}
+              </RadioGroup>
+
+              {(dateFilterType === 'monthly' || dateFilterType === 'yearly') && (
+                <Select value={viewYear} onValueChange={setViewYear}>
+                  <SelectTrigger className="w-[110px] h-9 text-sm bg-[#eef2ff] border-none shadow-none focus:ring-0 text-slate-700 font-medium">
+                    <SelectValue placeholder="Year" />
                   </SelectTrigger>
                   <SelectContent>
-                    {dateFilters.map(f => (
-                      <SelectItem key={f.value} value={f.value}>{f.label}</SelectItem>
+                    {availableYears.map(year => (
+                      <SelectItem key={year} value={year}>{year}</SelectItem>
                     ))}
                   </SelectContent>
                 </Select>
+              )}
 
-                {(dateFilterType === 'monthly' || dateFilterType === 'yearly') && (
-                  <Select value={viewYear} onValueChange={setViewYear}>
-                    <SelectTrigger className="w-[100px] h-9 text-sm">
-                      <SelectValue placeholder="Year" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {availableYears.map(year => (
-                        <SelectItem key={year} value={year}>{year}</SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                )}
-
-                {dateFilterType === 'monthly' && (
-                  <Select value={viewMonth} onValueChange={setViewMonth}>
-                    <SelectTrigger className="w-[120px] h-9 text-sm">
-                      <SelectValue placeholder="Month" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {months.map(m => (
-                        <SelectItem key={m.value} value={m.value}>{m.label}</SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                )}
-              </div>
+              {dateFilterType === 'monthly' && (
+                <Select value={viewMonth} onValueChange={setViewMonth}>
+                  <SelectTrigger className="w-[140px] h-9 text-sm bg-[#eef2ff] border-none shadow-none focus:ring-0 text-slate-700 font-medium">
+                    <SelectValue placeholder="Month" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {months.map(m => (
+                      <SelectItem key={m.value} value={m.value}>{m.label}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              )}
             </div>
 
-            <div className="flex items-center gap-2 w-full overflow-x-auto pb-2 md:pb-0 border-t pt-4">
+            <div className="flex items-center gap-2 w-full overflow-x-auto border-t pt-4">
               {typeFilters.map((filter) => (
                 <Badge 
                   key={filter.value}
                   variant={typeFilter === filter.value ? "default" : "outline"} 
-                  className="cursor-pointer hover:bg-muted py-1.5 px-4 transition-all whitespace-nowrap"
+                  className={cn(
+                    "cursor-pointer hover:bg-muted py-1.5 px-4 transition-all whitespace-nowrap",
+                    typeFilter === filter.value ? "bg-[#3f51b5] hover:bg-[#303f9f]" : ""
+                  )}
                   onClick={() => setTypeFilter(filter.value)}
                 >
                   {filter.label}
                 </Badge>
               ))}
               <div className="h-4 w-px bg-border mx-2" />
-              <Button variant="ghost" size="sm" onClick={() => {
+              <Button variant="ghost" size="sm" className="text-slate-500" onClick={() => {
                 setSearchTerm("");
                 setTypeFilter("all");
                 setDateFilterType("all");
@@ -584,3 +579,4 @@ export default function TransactionsPage() {
     </div>
   );
 }
+
