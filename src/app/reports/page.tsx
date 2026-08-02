@@ -79,7 +79,7 @@ export default function ReportsPage() {
     setIsGenerating(true);
     
     try {
-      // 1. FETCH FRESH DATA DIRECTLY FROM DATABASE
+      // 1. FETCH FRESH DATA DIRECTLY FROM DATABASE (Single Source of Truth)
       const [membersSnap, txSnap, loansSnap] = await Promise.all([
         getDocs(collection(db, 'members')),
         getDocs(collection(db, 'transactions')),
@@ -90,22 +90,25 @@ export default function ReportsPage() {
       const rawTransactions = txSnap.docs.map(d => ({ id: d.id, ...d.data() })) as any[];
       const rawLoans = loansSnap.docs.map(d => ({ id: d.id, ...d.data() })) as any[];
 
-      // 2. CRITICAL: Filter Orphans
+      // Create a Map for O(1) member lookup and source of truth for names
+      const memberMap = new Map(freshMembers.map(m => [m.id, m]));
       const activeMemberIds = new Set(freshMembers.map(m => m.id));
-      const freshTransactions = rawTransactions.filter(tx => !tx.memberId || activeMemberIds.has(tx.memberId));
-      const freshLoans = rawLoans.filter(loan => !loan.memberId || activeMemberIds.has(loan.memberId));
+
+      // 2. CRITICAL: Filter Orphans (Exclude deleted members)
+      const freshTransactions = rawTransactions.filter(tx => tx.memberId && activeMemberIds.has(tx.memberId));
+      const freshLoans = rawLoans.filter(loan => loan.memberId && activeMemberIds.has(loan.memberId));
 
       if (freshTransactions.length === 0 && freshLoans.length === 0) {
         toast({
           variant: "destructive",
           title: "No data available",
-          description: "No current records found in the database to generate a report.",
+          description: "No current records found for active members to generate a report.",
         });
         setIsGenerating(false);
         return;
       }
 
-      // 3. DASHBOARD SYNC LOGIC
+      // 3. DASHBOARD SYNC LOGIC (Same logic as src/app/page.tsx)
       const globalStats = {
         baseDeposits: 0,
         interest: 0,
@@ -133,13 +136,13 @@ export default function ReportsPage() {
       const totalDepositsGlobal = globalStats.baseDeposits + globalStats.interest + globalStats.fines;
       const remainingGlobal = totalDepositsGlobal - globalStats.outstanding - globalStats.expenses;
 
-      // Outstanding list breakdown - SORTED ALPHABETICALLY
+      // Outstanding list breakdown - SOURCE OF TRUTH FOR NAMES + A-Z SORT
       const outstandingLoansList = freshLoans
         .filter(loan => loan.status !== 'Closed')
         .map(loan => {
-          const member = freshMembers.find(m => m.id === loan.memberId);
+          const currentMember = memberMap.get(loan.memberId);
           return {
-            name: loan.isOutsiderLoan ? (loan.outsiderName || 'Outsider') : (member?.name || 'Unknown'),
+            name: currentMember?.name || 'Unknown',
             amount: (loan.outstandingPrincipal || 0) + (loan.outstandingInterest || 0)
           };
         })
@@ -169,29 +172,38 @@ export default function ReportsPage() {
                               period === 'all_time' ? 'All Time' : 
                               'Selected Period';
 
-      // Detailed transaction list - SORTED ALPHABETICALLY BY NAME
-      const filtered = freshTransactions.filter(tx => {
-        if (scope === "specific" && selectedMemberId && tx.memberId !== selectedMemberId) return false;
-        if (!tx.transactionDate) return false;
-        const txDate = new Date(tx.transactionDate);
-        if (txDate < reportStart || txDate > reportEnd) return false;
-        
-        if (type !== 'all') {
-          const t = tx.transactionType;
-          if (type === "deposits" && t !== 'Deposit') return false;
-          if (type === "loans" && t !== 'LoanDisbursement') return false;
-          if (type === "repayments" && !['PrincipalRepayment', 'InterestPayment', 'FinePayment'].includes(t)) return false;
-          if (type === "deposits_repayments" && !['Deposit', 'PrincipalRepayment', 'InterestPayment', 'FinePayment'].includes(t)) return false;
-        }
-        return true;
-      }).sort((a, b) => {
-        const nameA = (a.memberName || "").toLowerCase();
-        const nameB = (b.memberName || "").toLowerCase();
-        if (nameA < nameB) return -1;
-        if (nameA > nameB) return 1;
-        // Secondary sort by date if names are same
-        return new Date(a.transactionDate || 0).getTime() - new Date(b.transactionDate || 0).getTime();
-      });
+      // 4. DETAILED TRANSACTION LOG - SYNC NAMES FROM MEMBER TABLE + A-Z SORT
+      const filtered = freshTransactions
+        .filter(tx => {
+          if (scope === "specific" && selectedMemberId && tx.memberId !== selectedMemberId) return false;
+          if (!tx.transactionDate) return false;
+          const txDate = new Date(tx.transactionDate);
+          if (txDate < reportStart || txDate > reportEnd) return false;
+          
+          if (type !== 'all') {
+            const t = tx.transactionType;
+            if (type === "deposits" && t !== 'Deposit') return false;
+            if (type === "loans" && t !== 'LoanDisbursement') return false;
+            if (type === "repayments" && !['PrincipalRepayment', 'InterestPayment', 'FinePayment'].includes(t)) return false;
+            if (type === "deposits_repayments" && !['Deposit', 'PrincipalRepayment', 'InterestPayment', 'FinePayment'].includes(t)) return false;
+          }
+          return true;
+        })
+        .map(tx => {
+          // Force use current member name from Members table
+          const currentMember = memberMap.get(tx.memberId);
+          return {
+            ...tx,
+            resolvedName: currentMember?.name || 'Deleted Member'
+          };
+        })
+        .sort((a, b) => {
+          const nameA = a.resolvedName.toLowerCase();
+          const nameB = b.resolvedName.toLowerCase();
+          if (nameA < nameB) return -1;
+          if (nameA > nameB) return 1;
+          return new Date(a.transactionDate || 0).getTime() - new Date(b.transactionDate || 0).getTime();
+        });
 
       const periodMetrics = filtered.reduce((acc, tx) => {
         const amt = tx.amount || 0;
@@ -230,7 +242,7 @@ export default function ReportsPage() {
         generateCSVReport(filtered);
       }
 
-      toast({ title: "Report Generated", description: "Values match the current database status." });
+      toast({ title: "Report Generated", description: "All names reflect current Member records." });
     } catch (error: any) {
       console.error("Report generation error:", error);
       toast({ variant: "destructive", title: "Generation Failed", description: error.message || "An unexpected error occurred." });
@@ -277,7 +289,7 @@ export default function ReportsPage() {
 
     const tableData = data.map((tx: any) => [
       new Date(tx.transactionDate || 0).toLocaleDateString(),
-      tx.memberName || 'N/A',
+      tx.resolvedName,
       tx.transactionType.replace(/([A-Z])/g, ' $1').trim(),
       tx.comment || '-',
       `Rs. ${tx.amount.toLocaleString('en-IN')}`
@@ -321,7 +333,7 @@ export default function ReportsPage() {
   };
 
   const generateCSVReport = (data: any[]) => {
-    const csvContent = ["Date,Member,Type,Amount,Comment", ...data.map(tx => `${new Date(tx.transactionDate || 0).toLocaleDateString()},${tx.memberName},${tx.transactionType},${tx.amount},"${tx.comment || ''}"`)].join("\n");
+    const csvContent = ["Date,Member,Type,Amount,Comment", ...data.map(tx => `${new Date(tx.transactionDate || 0).toLocaleDateString()},${tx.resolvedName},${tx.transactionType},${tx.amount},"${tx.comment || ''}"`)].join("\n");
     const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
     const url = URL.createObjectURL(blob);
     const link = document.createElement("a");
