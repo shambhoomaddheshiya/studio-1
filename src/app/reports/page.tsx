@@ -1,4 +1,3 @@
-
 "use client"
 
 import React, { useState } from "react";
@@ -112,26 +111,46 @@ export default function ReportsPage() {
           return true;
         }).sort((a, b) => new Date(a.transactionDate || 0).getTime() - new Date(b.transactionDate || 0).getTime());
 
-        // Calculation Helpers for Net Capital Position Reconcilliation
+        // Calculation Helpers for Net Capital Position Reconcilliation (Matching Dashboard Logic)
         const calcNetPosition = (date: Date) => {
-          return allTransactions.reduce((acc, tx) => {
+          const collections = allTransactions.reduce((acc, tx) => {
             if (!tx.transactionDate || new Date(tx.transactionDate) > date) return acc;
             const amt = tx.amount || 0;
             const type = tx.transactionType;
-            // Net Position = (Deposits + Int + Fines + Principal Repaid) - (Disbursements + Expenses)
-            if (['Deposit', 'InterestPayment', 'FinePayment', 'PrincipalRepayment'].includes(type)) return acc + amt;
-            if (['LoanDisbursement', 'GeneralExpense'].includes(type)) return acc - amt;
+            // Total Capital = Deposits + Interest + Fines - Expenses
+            if (['Deposit', 'InterestPayment', 'FinePayment'].includes(type)) return acc + amt;
+            if (type === 'GeneralExpense') return acc - amt;
             return acc;
           }, 0);
+
+          const outstandingAtDate = loans.reduce((acc, loan) => {
+            if (!loan.loanDate) return acc;
+            const lDate = new Date(loan.loanDate);
+            if (lDate > date) return acc;
+            
+            // Subtract principal repaid up to this date
+            const repaid = allTransactions
+              .filter(tx => 
+                tx.relatedEntityId === loan.id && 
+                tx.transactionType === 'PrincipalRepayment' &&
+                new Date(tx.transactionDate || 0) <= date
+              )
+              .reduce((total, tx) => total + (tx.amount || 0), 0);
+            
+            return acc + Math.max(0, (loan.loanAmount || 0) - repaid);
+          }, 0);
+
+          return collections - outstandingAtDate;
         };
 
         const openingBalance = calcNetPosition(prevMonthEnd);
+        const closingBalance = calcNetPosition(reportEnd);
 
         const periodMetrics = filtered.reduce((acc, tx) => {
           const amt = tx.amount || 0;
           const t = tx.transactionType;
           if (t === 'Deposit') acc.deposits += amt;
-          else if (t === 'LoanDisbursement') acc.loans += amt;
+          // Note: Loans are calculated from registry below
           else if (t === 'PrincipalRepayment') acc.principal += amt;
           else if (t === 'InterestPayment') acc.interest += amt;
           else if (t === 'FinePayment') acc.fines += amt;
@@ -139,8 +158,18 @@ export default function ReportsPage() {
           return acc;
         }, { deposits: 0, loans: 0, principal: 0, interest: 0, fines: 0, expenses: 0 });
 
+        // Calculate period loans from registry for consistency with dashboard
+        const periodLoansFromRegistry = loans.reduce((acc, loan) => {
+          if (!loan.loanDate) return acc;
+          const lDate = new Date(loan.loanDate);
+          if (lDate >= reportStart && lDate <= reportEnd) {
+            return acc + (loan.loanAmount || 0);
+          }
+          return acc;
+        }, 0);
+        periodMetrics.loans = periodLoansFromRegistry;
+
         const periodNetBalance = (periodMetrics.deposits + periodMetrics.interest + periodMetrics.principal + periodMetrics.fines) - (periodMetrics.loans + periodMetrics.expenses);
-        const closingBalance = openingBalance + periodNetBalance;
 
         const accumulatedDeposits = allTransactions.reduce((acc, tx) => {
           if (!tx.transactionDate || new Date(tx.transactionDate) > reportEnd || tx.transactionType !== 'Deposit') return acc;
