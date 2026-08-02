@@ -65,6 +65,10 @@ export default function ReportsPage() {
     
     setTimeout(() => {
       try {
+        const monthStart = new Date(parseInt(selectedYear), parseInt(selectedMonth), 1);
+        const monthEnd = new Date(parseInt(selectedYear), parseInt(selectedMonth) + 1, 0, 23, 59, 59);
+
+        // Filter transactions for the report table
         const filtered = allTransactions.filter(tx => {
           if (scope === "specific" && selectedMemberId && tx.memberId !== selectedMemberId) return false;
 
@@ -88,8 +92,23 @@ export default function ReportsPage() {
           return true;
         }).sort((a, b) => new Date(a.transactionDate || 0).getTime() - new Date(b.transactionDate || 0).getTime());
 
+        // Calculate Balances for the Summary Table
+        let openingBalance = 0;
+        if (period === 'monthly') {
+          openingBalance = allTransactions.reduce((acc, tx) => {
+            if (!tx.transactionDate) return acc;
+            const d = new Date(tx.transactionDate);
+            if (d < monthStart) {
+              // Only include in opening balance if matches scope
+              if (scope === 'specific' && selectedMemberId && tx.memberId !== selectedMemberId) return acc;
+              return tx.balanceImpact === 'Credit' ? acc + (tx.amount || 0) : acc - (tx.amount || 0);
+            }
+            return acc;
+          }, 0);
+        }
+
         if (format === 'pdf') {
-          generatePDFReport(filtered);
+          generatePDFReport(filtered, openingBalance);
         } else {
           generateCSVReport(filtered);
         }
@@ -111,7 +130,7 @@ export default function ReportsPage() {
     }, 800);
   };
 
-  const generatePDFReport = (data: any[]) => {
+  const generatePDFReport = (data: any[], openingBalance: number) => {
     const doc = new jsPDF();
     const monthName = period === 'monthly' ? new Date(0, parseInt(selectedMonth)).toLocaleString('default', { month: 'long' }) : '';
     const reportTitle = period === 'monthly' ? `Group Transactions Report: ${monthName} ${selectedYear}` : 'Group Transactions Report';
@@ -128,22 +147,44 @@ export default function ReportsPage() {
       if (tx.transactionType === 'LoanDisbursement') acc.loans += amt;
       if (tx.transactionType === 'PrincipalRepayment') acc.principal += amt;
       if (tx.transactionType === 'InterestPayment') acc.interest += amt;
+      if (tx.transactionType === 'FinePayment') acc.fines += amt;
+      
+      const impact = tx.balanceImpact;
+      if (impact === 'Credit') acc.net += amt;
+      else acc.net -= amt;
+
       return acc;
-    }, { deposits: 0, loans: 0, principal: 0, interest: 0 });
+    }, { deposits: 0, loans: 0, principal: 0, interest: 0, fines: 0, net: 0 });
+
+    const closingBalance = openingBalance + summary.net;
+
+    const summaryRows = [];
+    if (period === 'monthly') {
+      summaryRows.push(['Opening Balance (Prev. Month Closing)', `Rs. ${openingBalance.toLocaleString('en-IN')}`]);
+    }
+    summaryRows.push(['Total Deposits (Current Month)', `Rs. ${summary.deposits.toLocaleString('en-IN')}`]);
+    summaryRows.push(['Total Loans Issued (Current Month)', `Rs. ${summary.loans.toLocaleString('en-IN')}`]);
+    summaryRows.push(['Total Principal Repaid (Current Month)', `Rs. ${summary.principal.toLocaleString('en-IN')}`]);
+    summaryRows.push(['Total Interest Earned (Current Month)', `Rs. ${summary.interest.toLocaleString('en-IN')}`]);
+    summaryRows.push(['Total Fines Collected (Current Month)', `Rs. ${summary.fines.toLocaleString('en-IN')}`]);
+    if (period === 'monthly') {
+      summaryRows.push(['Net Balance for Period', `Rs. ${summary.net.toLocaleString('en-IN')}`]);
+      summaryRows.push(['Closing Balance', `Rs. ${closingBalance.toLocaleString('en-IN')}`]);
+    }
 
     autoTable(doc, {
       startY: 35,
       head: [['Summary Metric', 'Amount (INR)']],
-      body: [
-        ['Total Deposits', `Rs. ${summary.deposits.toLocaleString('en-IN')}`],
-        ['Total Loans Issued', `Rs. ${summary.loans.toLocaleString('en-IN')}`],
-        ['Total Principal Repaid', `Rs. ${summary.principal.toLocaleString('en-IN')}`],
-        ['Total Interest Earned', `Rs. ${summary.interest.toLocaleString('en-IN')}`],
-      ],
+      body: summaryRows,
       theme: 'striped',
       headStyles: { fillColor: [46, 125, 50], textColor: [255, 255, 255] },
       styles: { fontSize: 10, cellPadding: 4, font: 'helvetica' },
-      columnStyles: { 1: { halign: 'right' } }
+      columnStyles: { 1: { halign: 'right' } },
+      didParseCell: function(data) {
+        if (data.row.index === summaryRows.length - 1 && period === 'monthly') {
+          data.cell.styles.fontStyle = 'bold';
+        }
+      }
     });
 
     const tableData = data.map(tx => {
