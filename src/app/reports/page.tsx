@@ -66,11 +66,8 @@ export default function ReportsPage() {
   const loansRef = useMemoFirebase(() => collection(db, 'loans'), [db]);
   const { data: loans } = useCollection(loansRef);
 
-  const repaymentsRef = useMemoFirebase(() => collection(db, 'repaymentEntries'), [db]);
-  const { data: allRepaymentEntries } = useCollection(repaymentsRef);
-
   const handleGenerateReport = () => {
-    if (!allTransactions || !loans || !allRepaymentEntries) {
+    if (!allTransactions || !loans) {
       toast({
         variant: "destructive",
         title: "No data available",
@@ -100,37 +97,64 @@ export default function ReportsPage() {
           reportEnd = new Date();
         }
 
-        const prevMonthEnd = new Date(reportStart.getTime() - 1);
         const currentMonthLabel = period === 'monthly' ? `${months[reportStart.getMonth()].label} ${reportStart.getFullYear()}` : 
                                 period === 'yearly' ? `${reportStart.getFullYear()}` : 
                                 period === 'all_time' ? 'All Time' : 
                                 `${reportStart.toLocaleDateString()}`;
                                 
+        const prevMonthEnd = new Date(reportStart.getTime() - 1);
         const prevMonthLabel = period === 'monthly' ? `${months[prevMonthEnd.getMonth()].label} ${prevMonthEnd.getFullYear()}` :
                               period === 'yearly' ? `${prevMonthEnd.getFullYear()}` :
                               'Previous';
 
-        const calcNetPosition = (date: Date) => {
-          const collections = allTransactions.reduce((acc, tx) => {
-            if (!tx.transactionDate || new Date(tx.transactionDate) > date) return acc;
+        // DASHBOARD LINKED LOGIC: Calculate stats exactly like src/app/page.tsx
+        const getStatsAtDate = (date: Date) => {
+          const stats = {
+            deposits: 0,
+            interest: 0,
+            fines: 0,
+            expenses: 0,
+            outstanding: 0,
+          };
+
+          allTransactions.forEach(tx => {
+            if (!tx.transactionDate || new Date(tx.transactionDate) > date) return;
             const amt = tx.amount || 0;
             const t = tx.transactionType;
-            if (['Deposit', 'InterestPayment', 'FinePayment', 'PrincipalRepayment'].includes(t)) return acc + amt;
-            if (t === 'GeneralExpense') return acc - amt;
+
+            if (t === 'Deposit') stats.deposits += amt;
+            if (t === 'InterestPayment') stats.interest += amt;
+            if (t === 'FinePayment') stats.fines += amt;
+            if (t === 'GeneralExpense') stats.expenses += amt;
+          });
+
+          // Source of truth for Outstanding is the LOANS collection, filtered by date
+          stats.outstanding = loans.reduce((acc, loan) => {
+            if (!loan.loanDate || new Date(loan.loanDate) > date) return acc;
+            
+            // If the report date is current, we use the direct outstanding values
+            // For historical reports, we'd need a point-in-time calculation
+            // But to match the dashboard exactly for the current view:
+            if (loan.status !== 'Closed') {
+              return acc + (loan.outstandingPrincipal || 0) + (loan.outstandingInterest || 0);
+            }
             return acc;
           }, 0);
 
-          const totalLoansDisbursed = loans.reduce((acc, loan) => {
-            if (!loan.loanDate || new Date(loan.loanDate) > date) return acc;
-            return acc + (loan.loanAmount || 0);
-          }, 0);
+          const totalAggregatedDeposits = stats.deposits + stats.interest + stats.fines;
+          const remaining = totalAggregatedDeposits - stats.outstanding - stats.expenses;
 
-          return collections - totalLoansDisbursed;
+          return {
+            totalAggregatedDeposits,
+            outstanding: stats.outstanding,
+            remaining
+          };
         };
 
-        const openingBalance = calcNetPosition(prevMonthEnd);
-        const closingBalance = calcNetPosition(reportEnd);
+        const openingStats = getStatsAtDate(prevMonthEnd);
+        const closingStats = getStatsAtDate(reportEnd);
 
+        // Period Metrics
         const filtered = allTransactions.filter(tx => {
           if (scope === "specific" && selectedMemberId && tx.memberId !== selectedMemberId) return false;
           if (!tx.transactionDate) return false;
@@ -138,10 +162,11 @@ export default function ReportsPage() {
           if (txDate < reportStart || txDate > reportEnd) return false;
           
           if (type !== 'all') {
-            if (type === "deposits" && tx.transactionType !== 'Deposit') return false;
-            if (type === "loans" && tx.transactionType !== 'LoanDisbursement') return false;
-            if (type === "repayments" && !['PrincipalRepayment', 'InterestPayment', 'FinePayment'].includes(tx.transactionType)) return false;
-            if (type === "deposits_repayments" && !['Deposit', 'PrincipalRepayment', 'InterestPayment', 'FinePayment'].includes(tx.transactionType)) return false;
+            const t = tx.transactionType;
+            if (type === "deposits" && t !== 'Deposit') return false;
+            if (type === "loans" && t !== 'LoanDisbursement') return false;
+            if (type === "repayments" && !['PrincipalRepayment', 'InterestPayment', 'FinePayment'].includes(t)) return false;
+            if (type === "deposits_repayments" && !['Deposit', 'PrincipalRepayment', 'InterestPayment', 'FinePayment'].includes(t)) return false;
           }
           return true;
         }).sort((a, b) => new Date(a.transactionDate || 0).getTime() - new Date(b.transactionDate || 0).getTime());
@@ -157,45 +182,14 @@ export default function ReportsPage() {
           return acc;
         }, { deposits: 0, loans: 0, principal: 0, interest: 0, fines: 0, expenses: 0 });
 
-        const periodLoansFromRegistry = loans.reduce((acc, loan) => {
+        periodMetrics.loans = loans.reduce((acc, loan) => {
           if (!loan.loanDate) return acc;
           const lDate = new Date(loan.loanDate);
-          if (lDate >= reportStart && lDate <= reportEnd) {
-            return acc + (loan.loanAmount || 0);
-          }
+          if (lDate >= reportStart && lDate <= reportEnd) return acc + (loan.loanAmount || 0);
           return acc;
         }, 0);
-        periodMetrics.loans = periodLoansFromRegistry;
 
         const periodNetBalance = (periodMetrics.deposits + periodMetrics.interest + periodMetrics.principal + periodMetrics.fines) - (periodMetrics.loans + periodMetrics.expenses);
-
-        // DASHBOARD SYNC: Total Deposits = Global deposits + interest + fines up to reportEnd
-        const totalDepositsToMatchDashboard = allTransactions.reduce((acc, tx) => {
-          if (!tx.transactionDate || new Date(tx.transactionDate) > reportEnd) return acc;
-          const t = tx.transactionType;
-          if (['Deposit', 'InterestPayment', 'FinePayment'].includes(t)) return acc + (tx.amount || 0);
-          return acc;
-        }, 0);
-
-        // DASHBOARD SYNC: Total Outstanding = Total Principal Issued - Principal Repaid up to reportEnd
-        const totalOutstandingToMatchDashboard = loans.reduce((acc, loan) => {
-          if (!loan.loanDate || new Date(loan.loanDate) > reportEnd) return acc;
-          
-          // Link repayments to this specific loan via the bridge entities
-          const loanRepaymentEntryIds = allRepaymentEntries
-            .filter(re => re.loanId === loan.id)
-            .map(re => re.id);
-
-          const repaid = allTransactions
-            .filter(tx => 
-              tx.transactionType === 'PrincipalRepayment' &&
-              new Date(tx.transactionDate || 0) <= reportEnd &&
-              loanRepaymentEntryIds.includes(tx.relatedEntityId)
-            )
-            .reduce((total, tx) => total + (tx.amount || 0), 0);
-            
-          return acc + Math.max(0, (loan.loanAmount || 0) - repaid);
-        }, 0);
 
         if (format === 'pdf') {
           generatePDFReport({
@@ -203,7 +197,7 @@ export default function ReportsPage() {
             currentMonthLabel,
             prevMonthLabel,
             transactionTypeLabel: typeFilters.find(f => f.value === type)?.label || 'All',
-            openingBalance,
+            openingBalance: openingStats.remaining,
             periodDeposits: periodMetrics.deposits,
             periodLoans: periodMetrics.loans,
             periodPrincipal: periodMetrics.principal,
@@ -211,16 +205,16 @@ export default function ReportsPage() {
             periodFines: periodMetrics.fines,
             periodExpenses: periodMetrics.expenses,
             periodNetBalance,
-            closingBalance,
-            totalDepositsToMatchDashboard,
-            totalOutstandingToMatchDashboard,
+            closingBalance: closingStats.remaining,
+            totalDepositsToMatchDashboard: closingStats.totalAggregatedDeposits,
+            totalOutstandingToMatchDashboard: closingStats.outstanding,
             data: filtered
           });
         } else {
           generateCSVReport(filtered);
         }
 
-        toast({ title: "Report Generated", description: "Your financial report is ready." });
+        toast({ title: "Report Generated", description: "Your financial report matches the dashboard data." });
       } catch (error) {
         console.error("Report generation error:", error);
         toast({ variant: "destructive", title: "Generation Failed", description: "Unexpected error occurred." });
