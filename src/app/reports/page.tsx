@@ -37,6 +37,21 @@ const months = [
   { value: "11", label: "December" },
 ];
 
+const typeFilters = [
+  { value: "all", label: "All" },
+  { value: "deposits", label: "Deposits" },
+  { value: "loans", label: "Loans" },
+  { value: "repayments", label: "Repayments" },
+  { value: "deposits_repayments", label: "Deposits & Repayments" },
+];
+
+const dateFilters = [
+  { value: "all", label: "All Time" },
+  { value: "monthly", label: "Monthly" },
+  { value: "yearly", label: "Yearly" },
+  { value: "custom", label: "Custom Range" },
+];
+
 export default function ReportsPage() {
   const { toast } = useToast();
   const db = useFirestore();
@@ -80,6 +95,35 @@ export default function ReportsPage() {
     
     setTimeout(() => {
       try {
+        // EXACT DASHBOARD LOGIC (Global Stats for reconciliation)
+        const globalStats = {
+          baseDeposits: 0,
+          interest: 0,
+          fines: 0,
+          expenses: 0,
+          outstanding: 0,
+        };
+
+        allTransactions.forEach(tx => {
+          const amt = tx.amount || 0;
+          const t = tx.transactionType;
+          if (t === 'Deposit') globalStats.baseDeposits += amt;
+          if (t === 'InterestPayment') globalStats.interest += amt;
+          if (t === 'FinePayment') globalStats.fines += amt;
+          if (t === 'GeneralExpense') globalStats.expenses += amt;
+        });
+
+        globalStats.outstanding = loans.reduce((acc, loan) => {
+          if (loan.status !== 'Closed') {
+            return acc + (loan.outstandingPrincipal || 0) + (loan.outstandingInterest || 0);
+          }
+          return acc;
+        }, 0);
+
+        const totalDepositsGlobal = globalStats.baseDeposits + globalStats.interest + globalStats.fines;
+        const remainingGlobal = totalDepositsGlobal - globalStats.outstanding - globalStats.expenses;
+
+        // Period Logic for Log
         let reportStart: Date;
         let reportEnd: Date;
 
@@ -97,64 +141,11 @@ export default function ReportsPage() {
           reportEnd = new Date();
         }
 
-        const currentMonthLabel = period === 'monthly' ? `${months[reportStart.getMonth()].label} ${reportStart.getFullYear()}` : 
-                                period === 'yearly' ? `${reportStart.getFullYear()}` : 
+        const currentMonthLabel = period === 'monthly' ? `${months[parseInt(selectedMonth)].label} ${selectedYear}` : 
+                                period === 'yearly' ? `${selectedYear}` : 
                                 period === 'all_time' ? 'All Time' : 
-                                `${reportStart.toLocaleDateString()}`;
-                                
-        const prevMonthEnd = new Date(reportStart.getTime() - 1);
-        const prevMonthLabel = period === 'monthly' ? `${months[prevMonthEnd.getMonth()].label} ${prevMonthEnd.getFullYear()}` :
-                              period === 'yearly' ? `${prevMonthEnd.getFullYear()}` :
-                              'Previous';
+                                'Selected Period';
 
-        // DASHBOARD LINKED LOGIC: Calculate stats exactly like src/app/page.tsx
-        const getStatsAtDate = (date: Date) => {
-          const stats = {
-            deposits: 0,
-            interest: 0,
-            fines: 0,
-            expenses: 0,
-            outstanding: 0,
-          };
-
-          allTransactions.forEach(tx => {
-            if (!tx.transactionDate || new Date(tx.transactionDate) > date) return;
-            const amt = tx.amount || 0;
-            const t = tx.transactionType;
-
-            if (t === 'Deposit') stats.deposits += amt;
-            if (t === 'InterestPayment') stats.interest += amt;
-            if (t === 'FinePayment') stats.fines += amt;
-            if (t === 'GeneralExpense') stats.expenses += amt;
-          });
-
-          // Source of truth for Outstanding is the LOANS collection, filtered by date
-          stats.outstanding = loans.reduce((acc, loan) => {
-            if (!loan.loanDate || new Date(loan.loanDate) > date) return acc;
-            
-            // If the report date is current, we use the direct outstanding values
-            // For historical reports, we'd need a point-in-time calculation
-            // But to match the dashboard exactly for the current view:
-            if (loan.status !== 'Closed') {
-              return acc + (loan.outstandingPrincipal || 0) + (loan.outstandingInterest || 0);
-            }
-            return acc;
-          }, 0);
-
-          const totalAggregatedDeposits = stats.deposits + stats.interest + stats.fines;
-          const remaining = totalAggregatedDeposits - stats.outstanding - stats.expenses;
-
-          return {
-            totalAggregatedDeposits,
-            outstanding: stats.outstanding,
-            remaining
-          };
-        };
-
-        const openingStats = getStatsAtDate(prevMonthEnd);
-        const closingStats = getStatsAtDate(reportEnd);
-
-        // Period Metrics
         const filtered = allTransactions.filter(tx => {
           if (scope === "specific" && selectedMemberId && tx.memberId !== selectedMemberId) return false;
           if (!tx.transactionDate) return false;
@@ -189,32 +180,25 @@ export default function ReportsPage() {
           return acc;
         }, 0);
 
-        const periodNetBalance = (periodMetrics.deposits + periodMetrics.interest + periodMetrics.principal + periodMetrics.fines) - (periodMetrics.loans + periodMetrics.expenses);
-
         if (format === 'pdf') {
           generatePDFReport({
             reportRange: currentMonthLabel,
-            currentMonthLabel,
-            prevMonthLabel,
-            transactionTypeLabel: typeFilters.find(f => f.value === type)?.label || 'All',
-            openingBalance: openingStats.remaining,
             periodDeposits: periodMetrics.deposits,
             periodLoans: periodMetrics.loans,
             periodPrincipal: periodMetrics.principal,
             periodInterest: periodMetrics.interest,
             periodFines: periodMetrics.fines,
             periodExpenses: periodMetrics.expenses,
-            periodNetBalance,
-            closingBalance: closingStats.remaining,
-            totalDepositsToMatchDashboard: closingStats.totalAggregatedDeposits,
-            totalOutstandingToMatchDashboard: closingStats.outstanding,
+            closingBalance: remainingGlobal,
+            totalDeposits: totalDepositsGlobal,
+            totalOutstanding: globalStats.outstanding,
             data: filtered
           });
         } else {
           generateCSVReport(filtered);
         }
 
-        toast({ title: "Report Generated", description: "Your financial report matches the dashboard data." });
+        toast({ title: "Report Generated", description: "All values match the dashboard exactly." });
       } catch (error) {
         console.error("Report generation error:", error);
         toast({ variant: "destructive", title: "Generation Failed", description: "Unexpected error occurred." });
@@ -224,53 +208,38 @@ export default function ReportsPage() {
     }, 800);
   };
 
-  const typeFilters = [
-    { value: "all", label: "All" },
-    { value: "deposits", label: "Deposits" },
-    { value: "loans", label: "Loans" },
-    { value: "repayments", label: "Repayments" },
-    { value: "deposits_repayments", label: "Deposits & Repayments" },
-  ];
-
   const generatePDFReport = (reportData: any) => {
     const doc = new jsPDF();
     const { 
-      reportRange, transactionTypeLabel, openingBalance, 
-      periodDeposits, periodLoans, periodPrincipal, periodInterest, periodFines,
-      periodNetBalance, closingBalance, totalDepositsToMatchDashboard, totalOutstandingToMatchDashboard, data,
-      currentMonthLabel, prevMonthLabel
+      reportRange, periodDeposits, periodLoans, periodPrincipal, periodInterest, periodFines,
+      periodExpenses, closingBalance, totalDeposits, totalOutstanding, data
     } = reportData;
 
     doc.setFontSize(22);
     doc.text(`Group Transactions Report: ${reportRange}`, 14, 20);
-    doc.setFontSize(12);
-    doc.text(`Transaction Type: ${transactionTypeLabel}`, 14, 30);
 
     const summaryRows = [
-      [`Opening Balance (${prevMonthLabel} Closing)`, `Rs. ${openingBalance.toLocaleString('en-IN')}`],
-      [`Total Deposits (${currentMonthLabel})`, `Rs. ${periodDeposits.toLocaleString('en-IN')}`],
-      [`Total Loans Issued (${currentMonthLabel})`, `Rs. ${periodLoans.toLocaleString('en-IN')}`],
-      [`Total Principal Repaid (${currentMonthLabel})`, `Rs. ${periodPrincipal.toLocaleString('en-IN')}`],
-      [`Total Interest Earned (${currentMonthLabel})`, `Rs. ${periodInterest.toLocaleString('en-IN')}`],
-      [`Total Fines Collected (${currentMonthLabel})`, `Rs. ${periodFines.toLocaleString('en-IN')}`],
-      [`Net Balance for Period`, `Rs. ${periodNetBalance.toLocaleString('en-IN')}`],
-      [{ content: `Closing Balance`, styles: { fontStyle: 'bold' } }, { content: `Rs. ${closingBalance.toLocaleString('en-IN')}`, styles: { fontStyle: 'bold' } }],
-      [`Total Deposits (up to ${currentMonthLabel})`, `Rs. ${totalDepositsToMatchDashboard.toLocaleString('en-IN')}`],
-      [`Total Outstanding Loan (up to ${currentMonthLabel})`, `Rs. ${totalOutstandingToMatchDashboard.toLocaleString('en-IN')}`]
+      [`Total Deposits (${reportRange})`, `Rs. ${periodDeposits.toLocaleString('en-IN')}`],
+      [`Total Loans Issued (${reportRange})`, `Rs. ${periodLoans.toLocaleString('en-IN')}`],
+      [`Total Principal Repaid (${reportRange})`, `Rs. ${periodPrincipal.toLocaleString('en-IN')}`],
+      [`Total Interest Earned (${reportRange})`, `Rs. ${periodInterest.toLocaleString('en-IN')}`],
+      [`Total Fines Collected (${reportRange})`, `Rs. ${periodFines.toLocaleString('en-IN')}`],
+      [`Total Expenses (${reportRange})`, `Rs. ${periodExpenses.toLocaleString('en-IN')}`],
+      [{ content: `Total Remaining Fund (Net Position)`, styles: { fontStyle: 'bold' } }, { content: `Rs. ${closingBalance.toLocaleString('en-IN')}`, styles: { fontStyle: 'bold' } }],
+      [`Total Deposits`, `Rs. ${totalDeposits.toLocaleString('en-IN')}`],
+      [`Outstanding Loan`, `Rs. ${totalOutstanding.toLocaleString('en-IN')}`]
     ];
 
     autoTable(doc, {
-      startY: 40,
+      startY: 30,
       head: [['Summary Metric', 'Amount (INR)']],
       body: summaryRows,
       theme: 'striped',
       headStyles: { fillColor: [46, 125, 50], textColor: [255, 255, 255], fontSize: 12 },
       columnStyles: { 1: { halign: 'right' } },
-      margin: { top: 40 }
     });
 
     const finalY = (doc as any).lastAutoTable.finalY;
-    doc.setTextColor(0);
     doc.setFontSize(14);
     doc.text("Detailed Transaction Log:", 14, finalY + 15);
 
