@@ -94,21 +94,30 @@ export default function ReportsPage() {
 
         // Calculate Balances for the Summary Table
         let openingBalance = 0;
+        let accumulatedDeposits = 0;
+
         if (period === 'monthly') {
           openingBalance = allTransactions.reduce((acc, tx) => {
             if (!tx.transactionDate) return acc;
             const d = new Date(tx.transactionDate);
             if (d < monthStart) {
-              // Only include in opening balance if matches scope
               if (scope === 'specific' && selectedMemberId && tx.memberId !== selectedMemberId) return acc;
               return tx.balanceImpact === 'Credit' ? acc + (tx.amount || 0) : acc - (tx.amount || 0);
             }
             return acc;
           }, 0);
+
+          accumulatedDeposits = allTransactions.reduce((acc, tx) => {
+            if (tx.transactionType !== 'Deposit' || !tx.transactionDate) return acc;
+            const d = new Date(tx.transactionDate);
+            if (d > monthEnd) return acc;
+            if (scope === 'specific' && selectedMemberId && tx.memberId !== selectedMemberId) return acc;
+            return acc + (tx.amount || 0);
+          }, 0);
         }
 
         if (format === 'pdf') {
-          generatePDFReport(filtered, openingBalance);
+          generatePDFReport(filtered, openingBalance, accumulatedDeposits);
         } else {
           generateCSVReport(filtered);
         }
@@ -130,7 +139,7 @@ export default function ReportsPage() {
     }, 800);
   };
 
-  const generatePDFReport = (data: any[], openingBalance: number) => {
+  const generatePDFReport = (data: any[], openingBalance: number, accumulatedDeposits: number) => {
     const doc = new jsPDF();
     const monthName = period === 'monthly' ? new Date(0, parseInt(selectedMonth)).toLocaleString('default', { month: 'long' }) : '';
     const reportTitle = period === 'monthly' ? `Group Transactions Report: ${monthName} ${selectedYear}` : 'Group Transactions Report';
@@ -158,7 +167,6 @@ export default function ReportsPage() {
 
     const closingBalance = openingBalance + summary.net;
 
-    // Calculate dynamic month labels for Opening Balance and Current Transactions
     const monthStart = new Date(parseInt(selectedYear), parseInt(selectedMonth), 1);
     const prevMonthDate = new Date(monthStart);
     prevMonthDate.setMonth(prevMonthDate.getMonth() - 1);
@@ -180,6 +188,7 @@ export default function ReportsPage() {
     if (period === 'monthly') {
       summaryRows.push(['Net Balance for Period', `Rs. ${summary.net.toLocaleString('en-IN')}`]);
       summaryRows.push(['Closing Balance', `Rs. ${closingBalance.toLocaleString('en-IN')}`]);
+      summaryRows.push([`Total Deposits accumulated (up to ${monthName} ${selectedYear})`, `Rs. ${accumulatedDeposits.toLocaleString('en-IN')}`]);
     }
 
     autoTable(doc, {
@@ -191,8 +200,11 @@ export default function ReportsPage() {
       styles: { fontSize: 10, cellPadding: 4, font: 'helvetica' },
       columnStyles: { 1: { halign: 'right' } },
       didParseCell: function(data) {
-        if (data.row.index === summaryRows.length - 1 && period === 'monthly') {
-          data.cell.styles.fontStyle = 'bold';
+        // Highlighting both Closing Balance and Total Accumulated row
+        if (period === 'monthly') {
+          if (data.row.index === summaryRows.length - 2 || data.row.index === summaryRows.length - 1) {
+            data.cell.styles.fontStyle = 'bold';
+          }
         }
       }
     });
@@ -321,7 +333,7 @@ export default function ReportsPage() {
               </RadioGroup>
 
               {period === "monthly" && (
-                <div className="mt-2 pl-7 flex gap-2 max-w-sm">
+                <div className="mt-2 pl-7 flex gap-2 max-sm">
                   <Select value={selectedMonth} onValueChange={setSelectedMonth}>
                     <SelectTrigger className="bg-white border-slate-200">
                       <SelectValue placeholder="Month" />
