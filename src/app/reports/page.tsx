@@ -99,7 +99,6 @@ export default function ReportsPage() {
         }
 
         const prevMonthEnd = new Date(reportStart.getTime() - 1);
-
         const currentMonthLabel = period === 'monthly' ? `${months[reportStart.getMonth()].label} ${reportStart.getFullYear()}` : 
                                 period === 'yearly' ? `${reportStart.getFullYear()}` : 
                                 period === 'all_time' ? 'All Time' : 
@@ -168,12 +167,16 @@ export default function ReportsPage() {
 
         const periodNetBalance = (periodMetrics.deposits + periodMetrics.interest + periodMetrics.principal + periodMetrics.fines) - (periodMetrics.loans + periodMetrics.expenses);
 
-        const accumulatedDeposits = allTransactions.reduce((acc, tx) => {
-          if (!tx.transactionDate || new Date(tx.transactionDate) > reportEnd || tx.transactionType !== 'Deposit') return acc;
-          return acc + (tx.amount || 0);
+        // DASHBOARD SYNC: Total Deposits = Global deposits + interest + fines up to reportEnd
+        const totalDepositsToMatchDashboard = allTransactions.reduce((acc, tx) => {
+          if (!tx.transactionDate || new Date(tx.transactionDate) > reportEnd) return acc;
+          const t = tx.transactionType;
+          if (['Deposit', 'InterestPayment', 'FinePayment'].includes(t)) return acc + (tx.amount || 0);
+          return acc;
         }, 0);
 
-        const accumulatedOutstanding = loans.reduce((acc, loan) => {
+        // DASHBOARD SYNC: Total Outstanding = Principal Issued - Principal Repaid up to reportEnd
+        const totalOutstandingToMatchDashboard = loans.reduce((acc, loan) => {
           if (!loan.loanDate || new Date(loan.loanDate) > reportEnd) return acc;
           const repaid = allTransactions
             .filter(tx => 
@@ -200,8 +203,8 @@ export default function ReportsPage() {
             periodExpenses: periodMetrics.expenses,
             periodNetBalance,
             closingBalance,
-            accumulatedDeposits,
-            accumulatedOutstanding,
+            totalDepositsToMatchDashboard,
+            totalOutstandingToMatchDashboard,
             data: filtered
           });
         } else {
@@ -230,8 +233,8 @@ export default function ReportsPage() {
     const doc = new jsPDF();
     const { 
       reportRange, transactionTypeLabel, openingBalance, 
-      periodDeposits, periodLoans, periodPrincipal, periodInterest, periodFines, periodExpenses,
-      periodNetBalance, closingBalance, accumulatedDeposits, accumulatedOutstanding, data,
+      periodDeposits, periodLoans, periodPrincipal, periodInterest, periodFines,
+      periodNetBalance, closingBalance, totalDepositsToMatchDashboard, totalOutstandingToMatchDashboard, data,
       currentMonthLabel, prevMonthLabel
     } = reportData;
 
@@ -249,8 +252,8 @@ export default function ReportsPage() {
       [`Total Fines Collected (${currentMonthLabel})`, `Rs. ${periodFines.toLocaleString('en-IN')}`],
       [`Net Balance for Period`, `Rs. ${periodNetBalance.toLocaleString('en-IN')}`],
       [{ content: `Closing Balance`, styles: { fontStyle: 'bold' } }, { content: `Rs. ${closingBalance.toLocaleString('en-IN')}`, styles: { fontStyle: 'bold' } }],
-      [`Total Deposits accumulated (up to ${currentMonthLabel})`, `Rs. ${accumulatedDeposits.toLocaleString('en-IN')}`],
-      [`Total Outstanding Loan (up to ${currentMonthLabel})`, `Rs. ${accumulatedOutstanding.toLocaleString('en-IN')}`]
+      [`Total Deposits (up to ${currentMonthLabel})`, `Rs. ${totalDepositsToMatchDashboard.toLocaleString('en-IN')}`],
+      [`Total Outstanding Loan (up to ${currentMonthLabel})`, `Rs. ${totalOutstandingToMatchDashboard.toLocaleString('en-IN')}`]
     ];
 
     autoTable(doc, {
