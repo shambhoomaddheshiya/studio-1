@@ -6,18 +6,10 @@ import { Navbar } from "@/components/layout/Navbar";
 import { StatCard } from "@/components/dashboard/StatCard";
 import { 
   Users, 
-  Wallet,
   Loader2,
-  Landmark,
-  CalendarCheck,
   Filter,
-  PiggyBank,
-  Scroll,
-  UserCheck,
-  Scale,
   CircleCheck,
   CircleX,
-  AlertCircle
 } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { 
@@ -100,7 +92,7 @@ export default function Dashboard() {
       loansTotalDisbursed: 0,
       interest: 0,
       fines: 0,
-      remaining: 0,
+      expenses: 0,
       outstanding: 0,
       memberActive: 0,
       memberInactive: 0,
@@ -110,14 +102,11 @@ export default function Dashboard() {
       allTransactions.forEach(tx => {
         const amt = tx.amount || 0;
         const t = tx.transactionType;
-        const impact = tx.balanceImpact;
 
         if (t === 'Deposit') s.baseDeposits += amt;
         if (t === 'InterestPayment') s.interest += amt;
         if (t === 'FinePayment') s.fines += amt;
-
-        if (impact === 'Credit') s.remaining += amt;
-        else s.remaining -= amt;
+        if (t === 'GeneralExpense') s.expenses += amt;
       });
     }
 
@@ -129,7 +118,6 @@ export default function Dashboard() {
         return acc;
       }, 0);
       
-      // Calculate Total Disbursed as the original principal of all loans issued
       s.loansTotalDisbursed = loans.reduce((acc, loan) => acc + (loan.loanAmount || 0), 0);
     }
 
@@ -138,10 +126,16 @@ export default function Dashboard() {
       s.memberInactive = members.filter(m => m.status === 'Inactive').length;
     }
 
+    const totalAggregatedDeposits = s.baseDeposits + s.interest + s.fines;
+    
+    // MATHEMATICALLY CORRECT REMAINING FUND:
+    // Cash on hand = Total Collected (Deposits + Int + Fines) - What is currently out (Outstanding) - What was spent (Expenses)
+    const remaining = totalAggregatedDeposits - s.outstanding - s.expenses;
+
     return {
       ...s,
-      // Aggregated Total Deposits: Deposits + Interest + Fines
-      totalAggregatedDeposits: s.baseDeposits + s.interest + s.fines
+      totalAggregatedDeposits,
+      remaining
     };
   }, [allTransactions, loans, members]);
 
