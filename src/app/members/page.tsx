@@ -45,7 +45,7 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 import { useFirestore, useCollection, useMemoFirebase, useUser } from "@/firebase";
-import { collection, doc } from "firebase/firestore";
+import { collection, doc, query, where, getDocs } from "firebase/firestore";
 import { deleteDocumentNonBlocking, updateDocumentNonBlocking } from "@/firebase/non-blocking-updates";
 import { useToast } from "@/hooks/use-toast";
 import { cn } from "@/lib/utils";
@@ -119,7 +119,6 @@ export default function MembersPage() {
       .reduce((acc, l) => acc + (l.outstandingPrincipal || 0) + (l.outstandingInterest || 0), 0);
   };
 
-  // Alphabetical sorting for member table
   const members = React.useMemo(() => {
     if (!rawMembers) return [];
     
@@ -136,13 +135,45 @@ export default function MembersPage() {
     return [...filtered].sort((a, b) => (a.name || "").localeCompare(b.name || ""));
   }, [rawMembers, searchTerm]);
 
-  const handleDelete = () => {
+  // CRITICAL: Cascade Deletion Logic - Purge all member-related data to prevent "stale" records in reports
+  const handleDelete = async () => {
     if (memberToDelete && db) {
-      const mRef = doc(db, 'members', memberToDelete.id);
-      deleteDocumentNonBlocking(mRef);
+      const memberId = memberToDelete.id;
+      
+      // 1. Delete Member Record
+      deleteDocumentNonBlocking(doc(db, 'members', memberId));
+
+      try {
+        // 2. Cleanup Transactions
+        const txCol = collection(db, 'transactions');
+        const qTx = query(txCol, where('memberId', '==', memberId));
+        const snapshotTx = await getDocs(qTx);
+        snapshotTx.forEach((docSnap) => {
+          deleteDocumentNonBlocking(docSnap.ref);
+        });
+
+        // 3. Cleanup Loans
+        const loansCol = collection(db, 'loans');
+        const qLoans = query(loansCol, where('memberId', '==', memberId));
+        const snapshotLoans = await getDocs(qLoans);
+        snapshotLoans.forEach((docSnap) => {
+          deleteDocumentNonBlocking(docSnap.ref);
+        });
+
+        // 4. Cleanup Deposit Entries
+        const depositsCol = collection(db, 'depositEntries');
+        const qDeposits = query(depositsCol, where('memberId', '==', memberId));
+        const snapshotDeposits = await getDocs(qDeposits);
+        snapshotDeposits.forEach((docSnap) => {
+          deleteDocumentNonBlocking(docSnap.ref);
+        });
+      } catch (e) {
+        console.error("Member deep cleanup failed:", e);
+      }
+
       toast({
-        title: "Member deleted",
-        description: `${memberToDelete.name} has been successfully removed.`,
+        title: "Member Purged",
+        description: `${memberToDelete.name} and all their history have been removed from the database.`,
       });
       setMemberToDelete(null);
     }
@@ -341,7 +372,7 @@ export default function MembersPage() {
           <AlertDialogHeader>
             <AlertDialogTitle>Are you absolutely sure?</AlertDialogTitle>
             <AlertDialogDescription>
-              This action cannot be undone. This will permanently delete <strong>{memberToDelete?.name}</strong> and remove their profile from the directory.
+              This action cannot be undone. This will permanently delete <strong>{memberToDelete?.name}</strong> and remove all their transaction and loan history.
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
@@ -350,7 +381,7 @@ export default function MembersPage() {
               onClick={handleDelete}
               className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
             >
-              Delete
+              Delete Everything
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>

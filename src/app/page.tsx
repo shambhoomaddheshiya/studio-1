@@ -67,9 +67,25 @@ export default function Dashboard() {
     return collection(db, 'loans');
   }, [db, user]);
   
-  const { data: allTransactions, isLoading: txLoading } = useCollection(allTxQuery);
+  const { data: allTransactionsRaw, isLoading: txLoading } = useCollection(allTxQuery);
   const { data: members } = useCollection(membersQuery);
-  const { data: loans } = useCollection(loansQuery);
+  const { data: loansRaw } = useCollection(loansQuery);
+
+  // CRITICAL: Orphan Filtering - Ensure Dashboard matches Report by excluding data from non-existent members
+  const activeMemberIds = useMemo(() => {
+    if (!members) return new Set<string>();
+    return new Set(members.map(m => m.id));
+  }, [members]);
+
+  const allTransactions = useMemo(() => {
+    if (!allTransactionsRaw) return [];
+    return allTransactionsRaw.filter(tx => !tx.memberId || activeMemberIds.has(tx.memberId));
+  }, [allTransactionsRaw, activeMemberIds]);
+
+  const loans = useMemo(() => {
+    if (!loansRaw) return [];
+    return loansRaw.filter(l => !l.memberId || activeMemberIds.has(l.memberId));
+  }, [loansRaw, activeMemberIds]);
 
   const availableYears = useMemo(() => {
     const years = new Set<string>();
@@ -126,7 +142,6 @@ export default function Dashboard() {
       s.memberInactive = members.filter(m => m.status === 'Inactive').length;
     }
 
-    // Net Capital Position Calculation: (Deposits + Int + Fines) - Outstanding Loans - Expenses
     const totalAggregatedDeposits = s.baseDeposits + s.interest + s.fines;
     const remaining = totalAggregatedDeposits - s.outstanding - s.expenses;
 
@@ -164,7 +179,6 @@ export default function Dashboard() {
       closingBalance: 0
     };
 
-    // Calculate collection metrics from transactions
     filteredTransactions.forEach(tx => {
       const amt = tx.amount || 0;
       const t = tx.transactionType;
@@ -176,7 +190,6 @@ export default function Dashboard() {
       else if (t === 'GeneralExpense') s.expenses += amt;
     });
 
-    // Calculate Loans Disbursed from LOANS collection for accuracy
     if (loans) {
       loans.forEach(loan => {
         if (!loan.loanDate) return;
@@ -198,7 +211,6 @@ export default function Dashboard() {
           ? new Date(parseInt(viewYear), 11, 31, 23, 59, 59)
           : new Date();
 
-      // Cumulative Net Position Calculation for Closing Balance
       const accumulated = allTransactions.reduce((acc, tx) => {
         if (!tx.transactionDate) return acc;
         const d = new Date(tx.transactionDate);
@@ -212,8 +224,6 @@ export default function Dashboard() {
       const periodOutstanding = loans.reduce((acc, loan) => {
         const d = new Date(loan.loanDate || 0);
         if (dateFilterType !== 'all' && d > periodEnd) return acc;
-        // Current outstanding = principal issued - principal repaid up to date
-        // Note: For extreme historical accuracy, we would sum principal repayments separately
         return acc + (loan.outstandingPrincipal || 0);
       }, 0);
 
@@ -223,7 +233,6 @@ export default function Dashboard() {
     return s;
   }, [filteredTransactions, allTransactions, loans, dateFilterType, viewMonth, viewYear]);
 
-  // Derived Net Position for the filtered period
   const monthlyNet = (overviewStats.deposits + overviewStats.interest + overviewStats.principalRecovered + overviewStats.fines) - (overviewStats.loans + overviewStats.expenses);
 
   if (isUserLoading || txLoading) {

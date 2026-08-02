@@ -1,3 +1,4 @@
+
 "use client"
 
 import React, { useState } from "react";
@@ -14,7 +15,7 @@ import {
   SelectValue 
 } from "@/components/ui/select";
 import { useFirestore, useCollection, useMemoFirebase } from "@/firebase";
-import { collection, getDocs } from "firebase/firestore";
+import { collection, getDocs, query, where } from "firebase/firestore";
 import { useToast } from "@/hooks/use-toast";
 import { Loader2 } from "lucide-react";
 import { Input } from "@/components/ui/input";
@@ -78,7 +79,7 @@ export default function ReportsPage() {
     setIsGenerating(true);
     
     try {
-      // FETCH FRESH DATA DIRECTLY FROM DATABASE TO AVOID STALE CACHED DATA
+      // 1. FETCH FRESH DATA DIRECTLY FROM DATABASE (Source of Truth)
       const [membersSnap, txSnap, loansSnap] = await Promise.all([
         getDocs(collection(db, 'members')),
         getDocs(collection(db, 'transactions')),
@@ -86,20 +87,25 @@ export default function ReportsPage() {
       ]);
 
       const freshMembers = membersSnap.docs.map(d => ({ id: d.id, ...d.data() })) as any[];
-      const freshTransactions = txSnap.docs.map(d => ({ id: d.id, ...d.data() })) as any[];
-      const freshLoans = loansSnap.docs.map(d => ({ id: d.id, ...d.data() })) as any[];
+      const rawTransactions = txSnap.docs.map(d => ({ id: d.id, ...d.data() })) as any[];
+      const rawLoans = loansSnap.docs.map(d => ({ id: d.id, ...d.data() })) as any[];
+
+      // 2. CRITICAL: Filter out data belonging to deleted members (Orphan cleanup)
+      const activeMemberIds = new Set(freshMembers.map(m => m.id));
+      const freshTransactions = rawTransactions.filter(tx => !tx.memberId || activeMemberIds.has(tx.memberId));
+      const freshLoans = rawLoans.filter(loan => !loan.memberId || activeMemberIds.has(loan.memberId));
 
       if (freshTransactions.length === 0 && freshLoans.length === 0) {
         toast({
           variant: "destructive",
           title: "No data available",
-          description: "No records found in the database to generate a report.",
+          description: "No current records found in the database to generate a report.",
         });
         setIsGenerating(false);
         return;
       }
 
-      // EXACT DASHBOARD LOGIC (Global Stats for reconciliation)
+      // 3. EXACT DASHBOARD SYNC LOGIC
       const globalStats = {
         baseDeposits: 0,
         interest: 0,
@@ -117,7 +123,6 @@ export default function ReportsPage() {
         if (t === 'GeneralExpense') globalStats.expenses += amt;
       });
 
-      // Dashboard source of truth for outstanding balance
       globalStats.outstanding = freshLoans.reduce((acc, loan) => {
         if (loan.status !== 'Closed') {
           return acc + (loan.outstandingPrincipal || 0) + (loan.outstandingInterest || 0);
@@ -128,7 +133,7 @@ export default function ReportsPage() {
       const totalDepositsGlobal = globalStats.baseDeposits + globalStats.interest + globalStats.fines;
       const remainingGlobal = totalDepositsGlobal - globalStats.outstanding - globalStats.expenses;
 
-      // Data for the "Outstanding Loans Details" section
+      // Outstanding list breakdown
       const outstandingLoansList = freshLoans
         .filter(loan => loan.status !== 'Closed')
         .map(loan => {
@@ -140,7 +145,7 @@ export default function ReportsPage() {
         })
         .filter(item => item.amount > 0);
 
-      // Period Logic for Log
+      // Period Logic
       let reportStart: Date;
       let reportEnd: Date;
 
@@ -216,7 +221,7 @@ export default function ReportsPage() {
         generateCSVReport(filtered);
       }
 
-      toast({ title: "Report Generated", description: "Values match the latest database records." });
+      toast({ title: "Report Generated", description: "Values match the current database status." });
     } catch (error: any) {
       console.error("Report generation error:", error);
       toast({ variant: "destructive", title: "Generation Failed", description: error.message || "An unexpected error occurred." });
@@ -258,7 +263,6 @@ export default function ReportsPage() {
 
     let finalY = (doc as any).lastAutoTable.finalY;
 
-    // Detailed Transaction Log
     doc.setFontSize(14);
     doc.text("Detailed Transaction Log:", 14, finalY + 15);
 
@@ -281,7 +285,6 @@ export default function ReportsPage() {
 
     finalY = (doc as any).lastAutoTable.finalY;
 
-    // Section: Outstanding Loans Details
     if (outstandingLoansList && outstandingLoansList.length > 0) {
       if (finalY > 240) {
         doc.addPage();
