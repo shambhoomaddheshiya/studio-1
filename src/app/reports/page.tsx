@@ -79,7 +79,6 @@ export default function ReportsPage() {
     setIsGenerating(true);
     
     try {
-      // 1. FETCH FRESH DATA DIRECTLY FROM DATABASE
       const [membersSnap, txSnap, loansSnap] = await Promise.all([
         getDocs(collection(db, 'members')),
         getDocs(collection(db, 'transactions')),
@@ -106,7 +105,6 @@ export default function ReportsPage() {
         return;
       }
 
-      // 2. DASHBOARD SYNC LOGIC
       const globalStats = {
         baseDeposits: 0,
         interest: 0,
@@ -134,7 +132,6 @@ export default function ReportsPage() {
       const totalDepositsGlobal = globalStats.baseDeposits + globalStats.interest + globalStats.fines;
       const remainingGlobal = totalDepositsGlobal - globalStats.outstanding - globalStats.expenses;
 
-      // Outstanding list breakdown - A-Z SORT
       const outstandingLoansList = freshLoans
         .filter(loan => loan.status !== 'Closed')
         .map(loan => {
@@ -147,7 +144,6 @@ export default function ReportsPage() {
         .filter(item => item.amount > 0)
         .sort((a, b) => a.name.localeCompare(b.name));
 
-      // Period Selection Logic
       let reportStart: Date;
       let reportEnd: Date;
 
@@ -170,7 +166,6 @@ export default function ReportsPage() {
                               period === 'all_time' ? 'All Time' : 
                               'Selected Period';
 
-      // 3. TRANSACTION LOG - A-Z SORT
       const filtered = freshTransactions
         .filter(tx => {
           if (scope === "specific" && selectedMemberId && tx.memberId !== selectedMemberId) return false;
@@ -214,7 +209,6 @@ export default function ReportsPage() {
         return acc;
       }, 0);
 
-      // 4. MONTHLY PAYMENT STATUS CALCULATION
       const paymentStatusByMonth = [];
       let currentMonthStart = new Date(reportStart.getFullYear(), reportStart.getMonth(), 1);
       const limitDate = new Date(reportEnd);
@@ -231,7 +225,6 @@ export default function ReportsPage() {
         freshMembers.forEach(member => {
           if (member.status !== 'Active') return;
 
-          // Check for deposit in this month
           const depositTx = freshTransactions.find(tx => 
             tx.memberId === member.id && 
             tx.transactionType === 'Deposit' &&
@@ -240,11 +233,10 @@ export default function ReportsPage() {
           );
           if (!depositTx) pendingDeposits.push(member.name);
 
-          // Check for interest if they have an active loan
           const activeLoans = freshLoans.filter(loan => 
             loan.memberId === member.id && 
             loan.status === 'Active' &&
-            new Date(loan.loanDate) < new Date(y, m, 1) // Loan taken before start of next month
+            new Date(loan.loanDate) < new Date(y, m, 1)
           );
 
           if (activeLoans.length > 0) {
@@ -329,7 +321,6 @@ export default function ReportsPage() {
 
     let finalY = (doc as any).lastAutoTable.finalY;
 
-    // SECTION: Monthly Payment Status
     doc.setFontSize(16);
     doc.text("Monthly Payment Status", 14, finalY + 15);
     finalY += 20;
@@ -360,14 +351,13 @@ export default function ReportsPage() {
       finalY = (doc as any).lastAutoTable.finalY + 15;
     });
 
-    // SECTION: Detailed Log
     if (finalY > 250) {
       doc.addPage();
       finalY = 20;
     }
     doc.setFontSize(14);
     doc.setFont("helvetica", "normal");
-    doc.text("Detailed Transaction Log (A-Z by Name):", 14, finalY + 5);
+    doc.text("Detailed Transaction Log:", 14, finalY + 5);
 
     const tableData = data.map((tx: any) => [
       new Date(tx.transactionDate || 0).toLocaleDateString(),
@@ -388,14 +378,13 @@ export default function ReportsPage() {
 
     finalY = (doc as any).lastAutoTable.finalY;
 
-    // SECTION: Outstanding Breakdown
     if (outstandingLoansList && outstandingLoansList.length > 0) {
       if (finalY > 240) {
         doc.addPage();
         finalY = 20;
       }
       doc.setFontSize(14);
-      doc.text("Outstanding Loans Details (A-Z by Name):", 14, finalY + 15);
+      doc.text("Outstanding Loans Details:", 14, finalY + 15);
 
       const outstandingRows = outstandingLoansList.map((item: any) => [
         item.name,
