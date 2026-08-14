@@ -296,7 +296,7 @@ export default function ReportsPage() {
     } = reportData;
 
     doc.setFontSize(22);
-    doc.text(`Group Transactions Report: ${reportRange}`, 14, 20);
+    doc.text(`Yuva Finance 2 Report: ${reportRange}`, 14, 20);
 
     const summaryRows = [
       [`Total Deposits`, `Rs. ${periodDeposits.toLocaleString('en-IN')}`],
