@@ -79,7 +79,7 @@ export default function ReportsPage() {
     setIsGenerating(true);
     
     try {
-      // 1. FETCH FRESH DATA DIRECTLY FROM DATABASE (Single Source of Truth)
+      // 1. FETCH FRESH DATA DIRECTLY FROM DATABASE
       const [membersSnap, txSnap, loansSnap] = await Promise.all([
         getDocs(collection(db, 'members')),
         getDocs(collection(db, 'transactions')),
@@ -90,11 +90,9 @@ export default function ReportsPage() {
       const rawTransactions = txSnap.docs.map(d => ({ id: d.id, ...d.data() })) as any[];
       const rawLoans = loansSnap.docs.map(d => ({ id: d.id, ...d.data() })) as any[];
 
-      // Create a Map for O(1) member lookup and source of truth for names
       const memberMap = new Map(freshMembers.map(m => [m.id, m]));
       const activeMemberIds = new Set(freshMembers.map(m => m.id));
 
-      // 2. CRITICAL: Filter Orphans (Exclude deleted members)
       const freshTransactions = rawTransactions.filter(tx => tx.memberId && activeMemberIds.has(tx.memberId));
       const freshLoans = rawLoans.filter(loan => loan.memberId && activeMemberIds.has(loan.memberId));
 
@@ -108,7 +106,7 @@ export default function ReportsPage() {
         return;
       }
 
-      // 3. DASHBOARD SYNC LOGIC
+      // 2. DASHBOARD SYNC LOGIC
       const globalStats = {
         baseDeposits: 0,
         interest: 0,
@@ -172,7 +170,7 @@ export default function ReportsPage() {
                               period === 'all_time' ? 'All Time' : 
                               'Selected Period';
 
-      // 4. DETAILED TRANSACTION LOG - SYNC NAMES + A-Z SORT
+      // 3. TRANSACTION LOG - A-Z SORT
       const filtered = freshTransactions
         .filter(tx => {
           if (scope === "specific" && selectedMemberId && tx.memberId !== selectedMemberId) return false;
@@ -196,13 +194,7 @@ export default function ReportsPage() {
             resolvedName: currentMember?.name || 'Deleted Member'
           };
         })
-        .sort((a, b) => {
-          const nameA = a.resolvedName.toLowerCase();
-          const nameB = b.resolvedName.toLowerCase();
-          if (nameA < nameB) return -1;
-          if (nameA > nameB) return 1;
-          return new Date(a.transactionDate || 0).getTime() - new Date(b.transactionDate || 0).getTime();
-        });
+        .sort((a, b) => a.resolvedName.localeCompare(b.resolvedName) || new Date(a.transactionDate || 0).getTime() - new Date(b.transactionDate || 0).getTime());
 
       const periodMetrics = filtered.reduce((acc, tx) => {
         const amt = tx.amount || 0;
@@ -222,6 +214,59 @@ export default function ReportsPage() {
         return acc;
       }, 0);
 
+      // 4. MONTHLY PAYMENT STATUS CALCULATION
+      const paymentStatusByMonth = [];
+      let currentMonthStart = new Date(reportStart.getFullYear(), reportStart.getMonth(), 1);
+      const limitDate = new Date(reportEnd);
+
+      while (currentMonthStart <= limitDate) {
+        const m = currentMonthStart.getMonth() + 1;
+        const y = currentMonthStart.getFullYear();
+        const monthName = months[m - 1].label;
+        const label = `${monthName} ${y}`;
+
+        const pendingDeposits: string[] = [];
+        const pendingInterest: string[] = [];
+
+        freshMembers.forEach(member => {
+          if (member.status !== 'Active') return;
+
+          // Check for deposit in this month
+          const depositTx = freshTransactions.find(tx => 
+            tx.memberId === member.id && 
+            tx.transactionType === 'Deposit' &&
+            new Date(tx.transactionDate).getMonth() + 1 === m &&
+            new Date(tx.transactionDate).getFullYear() === y
+          );
+          if (!depositTx) pendingDeposits.push(member.name);
+
+          // Check for interest if they have an active loan
+          const activeLoans = freshLoans.filter(loan => 
+            loan.memberId === member.id && 
+            loan.status === 'Active' &&
+            new Date(loan.loanDate) < new Date(y, m, 1) // Loan taken before start of next month
+          );
+
+          if (activeLoans.length > 0) {
+            const interestTx = freshTransactions.find(tx => 
+              tx.memberId === member.id && 
+              tx.transactionType === 'InterestPayment' &&
+              new Date(tx.transactionDate).getMonth() + 1 === m &&
+              new Date(tx.transactionDate).getFullYear() === y
+            );
+            if (!interestTx) pendingInterest.push(member.name);
+          }
+        });
+
+        paymentStatusByMonth.push({
+          label,
+          pendingDeposits: pendingDeposits.sort(),
+          pendingInterest: pendingInterest.sort()
+        });
+
+        currentMonthStart.setMonth(currentMonthStart.getMonth() + 1);
+      }
+
       if (format === 'pdf') {
         generatePDFReport({
           reportRange: currentMonthLabel,
@@ -235,7 +280,8 @@ export default function ReportsPage() {
           totalDeposits: totalDepositsGlobal,
           totalOutstanding: globalStats.outstanding,
           data: filtered,
-          outstandingLoansList
+          outstandingLoansList,
+          paymentStatusByMonth
         });
       } else {
         generateCSVReport(filtered);
@@ -254,7 +300,7 @@ export default function ReportsPage() {
     const doc = new jsPDF();
     const { 
       reportRange, periodDeposits, periodLoans, periodPrincipal, periodInterest, periodFines,
-      periodExpenses, closingBalance, totalDeposits, totalOutstanding, data, outstandingLoansList
+      periodExpenses, closingBalance, totalDeposits, totalOutstanding, data, outstandingLoansList, paymentStatusByMonth
     } = reportData;
 
     doc.setFontSize(22);
@@ -283,8 +329,45 @@ export default function ReportsPage() {
 
     let finalY = (doc as any).lastAutoTable.finalY;
 
+    // SECTION: Monthly Payment Status
+    doc.setFontSize(16);
+    doc.text("Monthly Payment Status", 14, finalY + 15);
+    finalY += 20;
+
+    paymentStatusByMonth.forEach((monthData: any) => {
+      if (finalY > 250) {
+        doc.addPage();
+        finalY = 20;
+      }
+      doc.setFontSize(12);
+      doc.setFont("helvetica", "bold");
+      doc.text(monthData.label, 14, finalY);
+      
+      const paymentRows = [
+        ['Pending Deposits', monthData.pendingDeposits.length, monthData.pendingDeposits.join(', ') || 'None'],
+        ['Pending Interest', monthData.pendingInterest.length, monthData.pendingInterest.join(', ') || 'None']
+      ];
+
+      autoTable(doc, {
+        startY: finalY + 5,
+        head: [['Category', 'Count', 'Members']],
+        body: paymentRows,
+        theme: 'grid',
+        headStyles: { fillColor: [121, 85, 72], fontSize: 10 },
+        columnStyles: { 0: { cellWidth: 40 }, 1: { cellWidth: 20 }, 2: { cellWidth: 'auto' } }
+      });
+
+      finalY = (doc as any).lastAutoTable.finalY + 15;
+    });
+
+    // SECTION: Detailed Log
+    if (finalY > 250) {
+      doc.addPage();
+      finalY = 20;
+    }
     doc.setFontSize(14);
-    doc.text("Detailed Transaction Log (A-Z by Name):", 14, finalY + 15);
+    doc.setFont("helvetica", "normal");
+    doc.text("Detailed Transaction Log (A-Z by Name):", 14, finalY + 5);
 
     const tableData = data.map((tx: any) => [
       new Date(tx.transactionDate || 0).toLocaleDateString(),
@@ -295,7 +378,7 @@ export default function ReportsPage() {
     ]);
 
     autoTable(doc, {
-      startY: finalY + 20,
+      startY: finalY + 10,
       head: [['Date', 'Member', 'Type', 'Description', 'Amount']],
       body: tableData,
       theme: 'grid',
@@ -305,6 +388,7 @@ export default function ReportsPage() {
 
     finalY = (doc as any).lastAutoTable.finalY;
 
+    // SECTION: Outstanding Breakdown
     if (outstandingLoansList && outstandingLoansList.length > 0) {
       if (finalY > 240) {
         doc.addPage();
