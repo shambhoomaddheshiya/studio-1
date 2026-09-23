@@ -1,4 +1,3 @@
-
 "use client"
 
 import React, { useState } from "react";
@@ -49,7 +48,6 @@ export default function NewTransactionPage() {
   const loansRef = useMemoFirebase(() => collection(db, 'loans'), [db]);
   const { data: allLoans, isLoading: loansLoading } = useCollection(loansRef);
 
-  // Alphabetical sorting and calculation of balances for the dropdown
   const sortedMembersWithBalance = React.useMemo(() => {
     if (!members) return [];
     
@@ -83,12 +81,24 @@ export default function NewTransactionPage() {
       return;
     }
 
+    const formData = new FormData(e.currentTarget);
+    const interestPaidAmount = Number(formData.get('interest_paid_amount')) || 0;
+    const repaymentAmount = Number(formData.get('repayment_amount')) || 0;
+    const waivedAmount = Number(formData.get('waived_amount')) || 0;
+
+    if ((interestPaidAmount > 0 || repaymentAmount > 0 || waivedAmount > 0) && !selectedLoanId) {
+      toast({
+        variant: "destructive",
+        title: "Loan ID Required",
+        description: "Please select a valid Loan ID to link with the interest payment, principal repayment, or loan waiver transaction.",
+      });
+      return;
+    }
+
     setIsSubmitting(true);
     
     try {
-      const formData = new FormData(e.currentTarget);
       const description = (formData.get('description') as string) || "";
-      
       const selectedMember = sortedMembersWithBalance.find(m => m.id === memberId);
       const memberName = selectedMember?.name || "Unknown Member";
       const timestamp = new Date().toISOString();
@@ -196,7 +206,6 @@ export default function NewTransactionPage() {
         }
       });
 
-      // AUTO-UPDATE LOAN BALANCE
       if (selectedLoanId) {
         const selectedLoan = allLoans?.find(l => l.id === selectedLoanId);
         if (selectedLoan) {
